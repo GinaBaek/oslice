@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>O!Slice 플러그인 제작기</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f5f5f7;
+      --surface2: #ebebef;
+      --border: #e0e0e8;
+      --accent: #00A1FF;
+      --accent2: #00A1FF;
+      --accent3: #e84040;
+      --text: #111118;
+      --text-muted: #666680;
+      --font: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+      --mono: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ── Slides ── */
+    .deck {
+      width: 100%;
+      height: 100vh;
+      position: relative;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 64px 0;
+      opacity: 0;
+      transform: translateX(40px);
+      transition: opacity .4s ease, transform .4s ease;
+      pointer-events: none;
+    }
+
+    .slide.active {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: all;
+    }
+
+    .slide.prev {
+      opacity: 0;
+      transform: translateX(-40px);
+    }
+
+    /* ── Nav ── */
+    .nav {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 10px 20px;
+      z-index: 100;
+    }
+
+    .nav button {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: color .2s, background .2s;
+    }
+
+    .nav button:hover { color: var(--text); background: var(--surface2); }
+
+    .nav .counter {
+      font-size: 13px;
+      color: var(--text-muted);
+      min-width: 60px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .dots {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--border);
+      cursor: pointer;
+      transition: background .2s, width .2s;
+    }
+
+    .dot.active {
+      background: var(--accent);
+      width: 18px;
+    }
+
+    /* ── Progress bar ── */
+    .progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width .4s ease;
+      z-index: 100;
+    }
+
+    /* ── Slide number chip ── */
+    .slide-num {
+      position: fixed;
+      top: 24px;
+      right: 32px;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      z-index: 100;
+    }
+
+    /* ── Typography ── */
+    .eyebrow {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0;
+    }
+
+    h1 {
+      font-size: clamp(40px, 5vw, 68px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -.02em;
+    }
+
+    h2 {
+      font-size: clamp(28px, 3.5vw, 44px);
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -.02em;
+    }
+
+    h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    p {
+      font-size: 17px;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+
+    .highlight { color: var(--accent); }
+    .highlight2 { color: var(--accent2); }
+    .highlight3 { color: var(--accent3); }
+
+    /* ── Layout helpers ── */
+    .center { text-align: center; }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      width: 100%;
+      max-width: 960px;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px;
+      width: 100%;
+      max-width: 960px;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      max-width: 960px;
+    }
+
+    .heading-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 40px;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+    }
+
+    .card.accent-border { border-color: var(--accent); }
+    .card.accent2-border { border-color: var(--accent2); }
+
+    /* ── Code block ── */
+    .code {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      font-family: var(--mono);
+      font-size: 13.5px;
+      line-height: 1.8;
+      color: #c0c0d8;
+      white-space: pre;
+      overflow-x: auto;
+      width: 100%;
+    }
+
+    .code .tree-dir { color: var(--accent); }
+    .code .tree-item { color: var(--text-muted); }
+    .code .tree-comment { color: #555570; }
+    .code .string { color: var(--accent2); }
+    .code .keyword { color: var(--accent3); }
+
+    /* ── Tag / Badge ── */
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(0,161,255,.12);
+      color: var(--accent);
+      border: 1px solid rgba(0,161,255,.3);
+    }
+
+    .tag.green {
+      background: rgba(78,205,196,.12);
+      color: var(--accent2);
+      border-color: rgba(78,205,196,.3);
+    }
+
+    .tag.red {
+      background: rgba(255,107,107,.12);
+      color: var(--accent3);
+      border-color: rgba(255,107,107,.3);
+    }
+
+    /* ── List ── */
+    .bullet-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .bullet-item {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .bullet-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      background: rgba(0,161,255,.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 13px;
+      margin-top: 1px;
+    }
+
+    .bullet-text { font-size: 16px; line-height: 1.6; color: var(--text-muted); }
+    .bullet-text strong { color: var(--text); font-weight: 600; }
+
+    /* ── Table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th {
+      text-align: left;
+      padding: 10px 16px;
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    th:first-child { border-radius: 8px 0 0 8px; }
+    th:last-child  { border-radius: 0 8px 8px 0; }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      color: var(--text-muted);
+    }
+
+    td strong { color: var(--text); font-weight: 600; font-family: var(--mono); font-size: 13px; }
+
+    /* ── Divider ── */
+    .divider {
+      width: 48px;
+      height: 3px;
+      border-radius: 999px;
+      background: var(--accent);
+      margin: 20px 0;
+    }
+
+    /* ── Cover gradient ── */
+    .cover-bg {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 70% 40%, rgba(0,161,255,.15) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 40% at 20% 70%, rgba(78,205,196,.1) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .cover-content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      max-width: 760px;
+    }
+
+    .cover-meta {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .cover-sub {
+      font-size: 15px;
+      color: var(--text-muted);
+    }
+
+    /* ── Problem/Solution ── */
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      width: 100%;
+      max-width: 900px;
+    }
+
+    .compare-card {
+      border-radius: 16px;
+      padding: 28px;
+    }
+
+    .compare-card.before {
+      background: rgba(255,107,107,.06);
+      border: 1px solid rgba(255,107,107,.2);
+    }
+
+    .compare-card.after {
+      background: rgba(78,205,196,.06);
+      border: 1px solid rgba(78,205,196,.2);
+    }
+
+    .compare-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .before .compare-label { color: var(--accent3); }
+    .after  .compare-label { color: var(--accent2); }
+
+    /* ── Flow diagram ── */
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .flow-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      min-width: 110px;
+    }
+
+    .flow-arrow {
+      color: var(--text-muted);
+      font-size: 18px;
+    }
+
+    /* ── Number stat ── */
+    .stat-num {
+      font-size: 56px;
+      font-weight: 800;
+      letter-spacing: -.03em;
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 15px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    /* ── Keyboard hint ── */
+    kbd {
+      display: inline-block;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-family: var(--mono);
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<div class="slide-num" id="slideNum"></div>
+
+<div class="deck" id="deck">
+
+  <!-- ①  커버 -->
+  <section class="slide active" data-index="0">
+    <div class="cover-bg"></div>
+    <div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:72px;width:100%;max-width:960px;">
+      <!-- 왼쪽: 텍스트 -->
+      <div style="display:flex;flex-direction:column;gap:24px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <span class="tag">Figma Plugin</span>
+          <span class="tag">Design System</span>
+          <span class="tag">Claude MCP</span>
+        </div>
+        <h1>O!Slice<br/><span class="highlight">플러그인</span> 제작기</h1>
+        <p style="font-size:19px;">Figma Frame 구조와 Naming을 자동화한<br/>피그마 플러그인 개발</p>
+      </div>
+      <!-- 오른쪽: 이미지 -->
+      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <img src="Group 1.png" alt="O!Slice" style="width:360px;object-fit:contain;" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ②  목차 -->
+  <section class="slide" data-index="1">
+    <div class="heading-group center">
+      <div class="eyebrow">Contents</div>
+      <h2>오늘 이야기할 것들</h2>
+    </div>
+    <div class="three-col">
+      <div class="card">
+        <div style="font-size:28px;margin-bottom:12px;">🤔</div>
+        <h3>01. 문제</h3>
+        <p>일관성 없는 Frame 구조가<br/>협업을 어떻게 막았나</p>
+      </div>
+      <div class="card">
+        <div style="font-size:28px;margin-bottom:12px;">✂️</div>
+        <h3>02. 해결책</h3>
+        <p>O!Slice — Frame & Naming<br/>가이드 + 자동화 플러그인</p>
+      </div>
+      <div class="card">
+        <div style="font-size:28px;margin-bottom:12px;">🤖</div>
+        <h3>03. AI 활용</h3>
+        <p>Claude MCP로 Frame을<br/>분석하고 자동 생성하기</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ③  인사이트 발견 - 과업 -->
+  <section class="slide" data-index="2">
+    <div class="heading-group center">
+      <div class="eyebrow">Origin</div>
+      <h2>입사 후 첫 과업</h2>
+    </div>
+    <div class="two-col" style="max-width:960px;align-items:center;">
+      <div class="stack">
+        <div class="bullet-list">
+          <div class="bullet-item">
+            <div class="bullet-icon">🏠</div>
+            <div class="bullet-text"><strong>3D 방꾸미기 검색 UX 개선</strong><br/>오늘의집 입사 후 첫 메인 과업. 바텀시트 기반의 상품 검색 흐름 전체를 새로 설계했다</div>
+          </div>
+          <div class="bullet-item">
+            <div class="bullet-icon">📐</div>
+            <div class="bullet-text"><strong>모든 지면의 Frame · 레이어를 정리하는 습관</strong><br/>화면마다 구조를 일관되게 잡고, 레이어 이름을 의미 있게 붙이는 것이 내 작업 방식이었다</div>
+          </div>
+          <div class="bullet-item">
+            <div class="bullet-icon">🔄</div>
+            <div class="bullet-text"><strong>개발팀에 핸드오프</strong><br/>정리된 Figma 파일을 FE 개발자 Kuza님께 전달</div>
+          </div>
+        </div>
+      </div>
+      <div style="border-radius:16px;overflow:hidden;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,.08);">
+        <img src="image 3.png" alt="Figma 레이어 구조" style="width:100%;display:block;" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ④  문제 발견 -->
+  <section class="slide" data-index="3">
+    <div class="heading-group center">
+      <div class="eyebrow">Problem</div>
+      <h2>문제점들을 발견하기 시작했다</h2>
+    </div>
+    <div style="display:flex;gap:40px;align-items:center;justify-content:center;width:100%;max-width:960px;">
+      <!-- 왼쪽: 문제 목록 -->
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="bullet-list">
+          <div class="bullet-item">
+            <div class="bullet-icon">🎨</div>
+            <div class="bullet-text"><strong>디자이너마다 Frame 설계 방식이 달랐다</strong><br/>구조 규칙 없이 각자의 방식으로 화면을 구성했다</div>
+          </div>
+          <div class="bullet-item">
+            <div class="bullet-icon">🏷️</div>
+            <div class="bullet-text"><strong>네이밍에 신경 쓰지 않는 사람이 많았다</strong><br/>레이어 이름이 없거나 Frame 1, Frame 2 같은 기본값 그대로였다</div>
+          </div>
+          <div class="bullet-item">
+            <div class="bullet-icon">📄</div>
+            <div class="bullet-text"><strong>지면(화면)에 명명을 안 하는 경우도 많았다</strong><br/>어떤 화면인지 이름이 없어 맥락 파악이 어려웠다</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:8px;padding:16px 40px;background:rgba(0,161,255,.08);border:1px solid rgba(0,161,255,.25);border-radius:12px;width:fit-content;">
+          <div style="font-size:20px;">↳</div>
+          <p style="font-size:15px;color:var(--text);"><strong>일관성이 없어 AI가 구조를 이해하지 못했다</strong></p>
+        </div>
+      </div>
+      <!-- 오른쪽: 이미지 -->
+      <div style="flex-shrink:0;border-radius:16px;overflow:hidden;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,.08);">
+        <img src="image 1.png" alt="문제 사례" style="width:283px;display:block;" />
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ④  Frame 구조 -->
+  <section class="slide" data-index="3">
+    <div class="heading-group center">
+      <div class="eyebrow">Frame Structure</div>
+      <h2>모든 화면의 기본 뼈대</h2>
+    </div>
+    <div class="two-col" style="max-width:960px;">
+      <div class="code"><span class="tree-dir">Screen</span>
+<span class="tree-item">├── Status Bar     </span><span class="tree-comment">← Component</span>
+<span class="tree-item">├── Top Bar        </span><span class="tree-comment">← Component</span>
+<span class="tree-dir">├── Body           </span><span class="tree-comment">← 가변 콘텐츠</span>
+<span class="tree-item">│   ├── Title + Text Area</span>
+<span class="tree-item">│   ├── Search Field Area</span>
+<span class="tree-item">│   └── Product Card Area</span>
+<span class="tree-item">│       └── List</span>
+<span class="tree-item">│           ├── Row → Module × 3</span>
+<span class="tree-item">│           └── Row → Module × 3</span>
+<span class="tree-item">└── CTA Bar        </span><span class="tree-comment">← Component, optional</span></div>
+      <div class="stack">
+        <div class="card accent-border">
+          <h3 style="margin-bottom:6px;">Bar</h3>
+          <p>Component가 여백 없이 영역을 채울 때.<br/><span style="font-family:var(--mono);font-size:13px;color:var(--accent)">Status Bar · Top Bar · CTA Bar</span></p>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom:6px;">Body</h3>
+          <p>내부 Area들을 Vertical Auto Layout으로 감싸는 콘텐츠 영역</p>
+        </div>
+        <div class="card accent2-border">
+          <h3 style="margin-bottom:6px;">Area</h3>
+          <p>Component를 감싸는 여백 래퍼.<br/>전체 너비(Full Width) 수평 슬라이스</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑤  Area 내부 -->
+  <section class="slide" data-index="4">
+    <div class="heading-group center">
+      <div class="eyebrow">Area Structure</div>
+      <h2>Module 수에 따라 구조가 달라진다</h2>
+    </div>
+    <div style="width:100%;max-width:960px;">
+      <table>
+        <thead>
+          <tr>
+            <th>상황</th>
+            <th>구조</th>
+            <th>예시</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Module 1개</td>
+            <td><strong>Area › Component</strong></td>
+            <td style="color:var(--text-muted);">Search Field Area › Search Field</td>
+          </tr>
+          <tr>
+            <td>Module 2개+, 가로 1줄</td>
+            <td><strong>Area › List(H) › Module</strong></td>
+            <td style="color:var(--text-muted);">Product Card Area › List › Module ×3</td>
+          </tr>
+          <tr>
+            <td>Module 2개+, 세로 1열</td>
+            <td><strong>Area › List(V) › Module</strong></td>
+            <td style="color:var(--text-muted);">Menu Item Area › List › Module ×4</td>
+          </tr>
+          <tr>
+            <td>Grid (격자)</td>
+            <td><strong>Area › List(V) › Row(H) › Module</strong></td>
+            <td style="color:var(--text-muted);">Product Card Area › List › Row › Module</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ⑥  Naming 규칙 -->
+  <section class="slide" data-index="5">
+    <div class="heading-group center">
+      <div class="eyebrow">Naming Rules</div>
+      <h2>이름 하나가 구조를 설명한다</h2>
+    </div>
+    <div class="three-col">
+      <div class="card">
+        <div class="tag" style="margin-bottom:14px;">Rule 1</div>
+        <h3>화면 네이밍</h3>
+        <p style="margin-bottom:12px;font-size:14px;">한글 · 언더바로 계층 구분<br/>상태는 마지막에 붙이기</p>
+        <div class="code" style="font-size:12px;padding:12px 14px;"><span class="string">바텀시트_상품_카테고리
+거실_상품선택_검색결과없음
+AI 렌더링 중_렌더링 실패</span></div>
+      </div>
+      <div class="card">
+        <div class="tag" style="margin-bottom:14px;">Rule 2</div>
+        <h3>내부 Frame 네이밍</h3>
+        <p style="margin-bottom:12px;font-size:14px;">영문 Title Case<br/>Bar / Body / Area 구분</p>
+        <div class="code" style="font-size:12px;padding:12px 14px;"><span class="string">Title Area
+Search Field Area
+Title + Button Area
+Product Card Area</span></div>
+      </div>
+      <div class="card">
+        <div class="tag" style="margin-bottom:14px;">Rule 3</div>
+        <h3>데이터 레이어 네이밍</h3>
+        <p style="margin-bottom:12px;font-size:14px;">API 필드명 그대로<br/>snake_case</p>
+        <div class="code" style="font-size:12px;padding:12px 14px;"><span class="string">first_image_url
+total_praise_count
+selling_cost
+updated_at_kst</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑦  AS-IS vs TO-BE -->
+  <section class="slide" data-index="6">
+    <div class="heading-group center">
+      <div class="eyebrow">Before / After</div>
+      <h2>무엇이 달라졌나</h2>
+    </div>
+    <div class="compare">
+      <div class="compare-card before">
+        <div class="compare-label">AS-IS</div>
+        <div class="bullet-list">
+          <div class="bullet-item">
+            <div class="bullet-icon" style="background:rgba(255,107,107,.15);">✗</div>
+            <div class="bullet-text">Frame 이름이 없거나 임의적</div>
+          </div>
+          <div class="bullet-item">
+            <div class="bullet-icon" style="background:rgba(255,107,107,.15);">✗</div>
+            <div class="bullet-text">상태 변경 시 모든 요소 개별 수정</div>
+          </div>
+          <div class="bullet-item">
+            <div class="bullet-icon" style="background:rgba(255,107,107,.15);">✗</div>
+            <div class="bullet-text">개발 핸드오프 시 구조 파악 어려움</div>
+          </div>
+          <div class="bullet-item">
+            <div class="bullet-icon" style="background:rgba(255,107,107,.15);">✗</div>
+            <div class="bullet-text">AI가 스크린샷 없이 구조 분석 불가</div>
+          </div>
+        </div>
+      </div>
+      <div class="compare-card after">
+        <div class="compare-label">TO-BE</div>
+        <div class="bullet-list">
+          <div class="bullet-item">
+            <div class="bullet-icon" style="background:rgba(78,205,196,.15);">✓</div>
+            <div class="bullet-text">Frame 이름만으로 구조 예측 가능</div>
+          </div>
+          <div class="bullet-item">
+            <div class="bullet-icon" style="background:rgba(78,205,196,.15);">✓</div>
+            <div class="bullet-text">해당 Area만 교체하면 상태 변경 완료</div>
+          </div>
+          <div class="bullet-item">
+            <div class="bullet-icon" style="background:rgba(78,205,196,.15);">✓</div>
+            <div class="bullet-text">개발자가 이름만으로 구조 파악</div>
+          </div>
+          <div class="bullet-item">
+            <div class="bullet-icon" style="background:rgba(78,205,196,.15);">✓</div>
+            <div class="bullet-text">Claude가 이름 기반으로 자동 분석</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑧  Claude MCP -->
+  <section class="slide" data-index="7">
+    <div class="heading-group center">
+      <div class="eyebrow">AI Integration</div>
+      <h2>Claude가 Figma를 읽는다</h2>
+    </div>
+    <div class="stack" style="max-width:960px;align-items:center;">
+      <div class="flow">
+        <div class="flow-step">Figma<br/><span style="color:var(--accent);font-size:12px;">Frame 이름 있음</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Figma MCP<br/><span style="color:var(--text-muted);font-size:12px;">구조 전달</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Claude<br/><span style="color:var(--accent2);font-size:12px;">이름 기반 분석</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Auto Layout<br/><span style="color:var(--accent2);font-size:12px;">자동 설정</span></div>
+      </div>
+      <div class="card" style="margin-top:12px;width:100%;">
+        <p style="font-size:15px;">Frame 이름이 의미 있을 때, Claude는 <strong style="color:var(--text);">스크린샷 없이</strong>도 레이아웃의 역할을 이해하고<br/>Auto Layout 설정과 구조 분석을 자동화할 수 있습니다.</p>
+      </div>
+      <div class="code" style="margin-top:4px;">
+<span class="tree-comment"># Claude가 이해하는 것</span>
+<span class="string">"Product Card Area"</span> → List > Row > Module 격자 구조 예측
+<span class="string">"Title + Button Area"</span> → heading + Button 가로 배치 예측
+<span class="string">"Search Field Area"</span>  → 단일 컴포넌트 래퍼, Full Width</div>
+    </div>
+  </section>
+
+  <!-- ⑨  플러그인 기능 -->
+  <section class="slide" data-index="8">
+    <div class="heading-group center">
+      <div class="eyebrow">O!Slice Plugin</div>
+      <h2>플러그인이 하는 일</h2>
+    </div>
+    <div class="three-col">
+      <div class="card">
+        <div style="font-size:32px;margin-bottom:14px;">✂️</div>
+        <h3>Slice</h3>
+        <p>화면을 Area 단위로 자동 분할하고 Body 구조를 생성합니다</p>
+      </div>
+      <div class="card">
+        <div style="font-size:32px;margin-bottom:14px;">🏷️</div>
+        <h3>Name</h3>
+        <p>Frame 레이어를 분석해 Naming Rule에 맞는 이름을 제안합니다</p>
+      </div>
+      <div class="card">
+        <div style="font-size:32px;margin-bottom:14px;">✅</div>
+        <h3>Lint</h3>
+        <p>현재 파일의 Naming & Structure를 체크리스트 기준으로 검사합니다</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑩  체크리스트 -->
+  <section class="slide" data-index="9">
+    <div class="heading-group center">
+      <div class="eyebrow">Checklist</div>
+      <h2>설계 전 확인하세요</h2>
+    </div>
+    <div class="two-col" style="max-width:960px;">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;">화면 네이밍</div>
+        <div class="bullet-list">
+          <div class="bullet-item"><div class="bullet-icon">①</div><div class="bullet-text">Screen 이름은 한글로, 큰 단위부터 <code style="font-family:var(--mono);font-size:12px;color:var(--accent);">_</code>로 구분했나?</div></div>
+          <div class="bullet-item"><div class="bullet-icon">②</div><div class="bullet-text">상태(State)는 Screen 이름 마지막에 붙였나?</div></div>
+          <div class="bullet-item"><div class="bullet-icon">③</div><div class="bullet-text">같은 기능의 화면끼리 앞부분이 통일되어 있나?</div></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;">내부 구조</div>
+        <div class="bullet-list">
+          <div class="bullet-item"><div class="bullet-icon">④</div><div class="bullet-text">내부 Frame은 Title Case로 작성했나?</div></div>
+          <div class="bullet-item"><div class="bullet-icon">⑤</div><div class="bullet-text">여백 없이 채우면 Bar, 래퍼는 Area?</div></div>
+          <div class="bullet-item"><div class="bullet-icon">⑥</div><div class="bullet-text">Area 이름은 시각적 순서대로 요소를 나열했나?</div></div>
+          <div class="bullet-item"><div class="bullet-icon">⑦</div><div class="bullet-text">콘텐츠 레이어에 API 필드명(snake_case) 붙였나?</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑪  마무리 -->
+  <section class="slide" data-index="10">
+    <div class="cover-bg"></div>
+    <div style="position:relative;z-index:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:24px;max-width:680px;">
+      <div class="eyebrow">Takeaway</div>
+      <h2 style="font-size:clamp(32px,4vw,52px);">이름이 곧 <span class="highlight">구조</span>이고<br/>구조가 곧 <span class="highlight2">협업</span>이다</h2>
+      <div class="divider" style="margin:0;"></div>
+      <p style="font-size:17px;">Frame 이름 하나가 디자이너·개발자·AI를 같은 언어로 묶습니다.<br/>O!Slice는 그 언어를 강제하지 않고, <strong style="color:var(--text);">쉽게 따를 수 있도록</strong> 돕습니다.</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px;">
+        <span class="tag">Frame Structure</span>
+        <span class="tag">Naming Rules</span>
+        <span class="tag green">Claude MCP</span>
+        <span class="tag green">Auto Layout</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  const total = slides.length;
+  let cur = 0;
+
+  const progressEl = document.getElementById('progress');
+  const slideNumEl = document.getElementById('slideNum');
+
+  function render() {
+    slides.forEach((s, i) => {
+      s.classList.remove('active', 'prev');
+      if (i === cur) s.classList.add('active');
+      else if (i < cur) s.classList.add('prev');
+    });
+    slideNumEl.textContent = `${cur + 1} / ${total}`;
+    progressEl.style.width = `${((cur + 1) / total) * 100}%`;
+  }
+
+  function go(dir) { goTo(cur + dir); }
+
+  function goTo(n) {
+    if (n < 0 || n >= total) return;
+    cur = n;
+    render();
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); go(1); }
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); go(-1); }
+    if (e.key === 'Home') goTo(0);
+    if (e.key === 'End')  goTo(total - 1);
+  });
+
+  let tx = 0;
+  document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; });
+  document.addEventListener('touchend',   e => {
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+  });
+
+  render();
+</script>
+</body>
+</html>
