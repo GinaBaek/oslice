@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      background: #fff;
+      color: #141414;
+      padding: 16px;
+    }
+    h1 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+    .subtitle { font-size: 11px; color: #8c8c8c; margin-bottom: 16px; }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #141414;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+    button:hover { background: #383838; }
+
+    .issue-item {
+      border-radius: 6px;
+      margin-bottom: 8px;
+      background: #fff8f0;
+      border: 1px solid #ffd199;
+      overflow: hidden;
+    }
+    .issue-item.known {
+      background: transparent;
+      border: 1px solid #e0e0e0;
+    }
+    .issue-item.known .issue-node { color: #8c8c8c; }
+    .issue-item.known .issue-tag { opacity: 0.4; }
+    .issue-item.known .issue-message { color: #c0c0c0; }
+
+    .issue-main {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+    .issue-main:hover { background: rgba(0,0,0,0.02); }
+    .issue-item.known .issue-main:hover { background: transparent; }
+
+    .issue-content { flex: 1; min-width: 0; }
+    .issue-node {
+      font-weight: 600;
+      font-size: 12px;
+      margin-bottom: 3px;
+      color: #141414;
+    }
+    .issue-message {
+      font-size: 11px;
+      color: #8c8c8c;
+      line-height: 1.5;
+    }
+    .issue-tag {
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    .tag-no-autolayout { background: #fde8e8; color: #e53e3e; }
+    .tag-no-typography-variable { background: #e8f0fd; color: #3e7ae5; }
+    .tag-no-data-field-name { background: #f0fde8; color: #3ea53e; }
+    .tag-non-component-module { background: #fdf5e8; color: #c07a00; }
+    .tag-hidden-layer { background: #f0f0f0; color: #666666; }
+    .tag-wrong-area-name { background: #f3e8fd; color: #7c3aed; }
+    .tag-wrong-layer-name { background: #f3e8fd; color: #7c3aed; }
+    .tag-needs-list-wrapper { background: #fff0e0; color: #c05c00; }
+    .tag-invalid-screen-structure { background: #fff3cd; color: #856404; }
+    .tag-nested-area { background: #fde8e8; color: #c0392b; }
+    .tag-needs-area-wrapper { background: #e8f4fd; color: #1a6ea8; }
+    .tag-needs-area-grouping { background: #e8fdf5; color: #1a8a5e; }
+    .tag-excess-top-padding { background: #fff0e0; color: #b84c00; }
+    .tag-excess-bottom-padding { background: #fff0e0; color: #b84c00; }
+    .tag-missing-bottom-padding { background: #fff0e0; color: #b84c00; }
+    .tag-missing-body { background: #fff3cd; color: #856404; }
+    .tag-redundant-wrapper { background: #fde8e8; color: #c0392b; }
+    .tag-footer-coexistence { background: #fde8e8; color: #c0392b; }
+    .tag-screen-scroll { background: #fde8e8; color: #c0392b; }
+    .tag-screen-no-autolayout { background: #fde8e8; color: #e53e3e; }
+
+    .issue-checkbox {
+      width: 16px;
+      height: 16px;
+      min-width: 16px;
+      border: 1.5px solid #c0c0c0;
+      border-radius: 4px;
+      margin-top: 1px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .issue-checkbox.checked {
+      background: #141414;
+      border-color: #141414;
+      color: white;
+    }
+
+    .action-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex-shrink: 0;
+      align-self: center;
+    }
+    .action-btn {
+      width: 60px;
+      padding: 5px 0;
+      font-size: 10px;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: center;
+      border: none;
+      margin: 0;
+    }
+    .action-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .action-btn.btn-structure { background: #141414; color: white; }
+    .action-btn.btn-structure:hover:not(:disabled) { background: #383838; }
+    .action-btn.btn-naming { background: #f3e8fd; color: #7c3aed; }
+    .action-btn.btn-naming:hover:not(:disabled) { background: #e8d5fc; }
+    .action-btn.btn-delete { background: transparent; border: 1px solid #e0e0e0; color: #8c8c8c; }
+    .action-btn.btn-delete:hover:not(:disabled) { background: #fde8e8; border-color: #e53e3e; color: #e53e3e; }
+
+    .confirm-row {
+      border-top: 1px solid #b7ebc8;
+      padding: 10px 12px;
+      background: #f0faf4;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .confirm-check-area {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      cursor: pointer;
+    }
+    .confirm-check-area:hover .confirm-checkbox { border-color: #1a6e35; }
+    .confirm-checkbox {
+      width: 16px;
+      height: 16px;
+      min-width: 16px;
+      border: 1.5px solid #2d8a4e;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .confirm-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #2d8a4e;
+    }
+    .revert-btn {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #e0e0e0;
+      background: transparent;
+      color: #8c8c8c;
+      cursor: pointer;
+      flex-shrink: 0;
+      margin: 0;
+      width: auto;
+    }
+    .revert-btn:hover { background: #fde8e8; border-color: #e53e3e; color: #e53e3e; }
+
+    .issue-result {
+      border-top: 1px solid #ffd199;
+      padding: 10px 12px;
+      background: #fffdf5;
+    }
+    .issue-item.known .issue-result {
+      border-top-color: #e0e0e0;
+      background: #fafafa;
+    }
+    .issue-result-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: #8c8c8c;
+      margin-bottom: 6px;
+    }
+    .issue-result pre {
+      font-size: 11px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #141414;
+      font-family: 'SF Mono', 'Fira Mono', monospace;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .issue-result.loading {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #8c8c8c;
+      font-size: 11px;
+    }
+
+    .bulk-btn {
+      flex: 1;
+      padding: 9px;
+      font-size: 12px;
+      font-weight: 600;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 0;
+      width: auto;
+    }
+    .bulk-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .bulk-btn-structure { background: #141414; color: white; }
+    .bulk-btn-structure:hover:not(:disabled) { background: #383838; }
+    .bulk-btn-naming { background: #f3e8fd; color: #7c3aed; }
+    .bulk-btn-naming:hover:not(:disabled) { background: #e8d5fc; }
+
+    .success {
+      text-align: center;
+      padding: 20px;
+      background: #f0faf4;
+      border-radius: 6px;
+      color: #2d8a4e;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .count { font-size: 11px; color: #8c8c8c; margin-bottom: 8px; }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div style="background:#f5f5f5; border-radius:8px; padding:16px 0; display:flex; align-items:center; justify-content:center; margin-bottom:16px;">
+    <svg width="96" height="20" viewBox="0 0 96 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="96" height="20" rx="10" fill="#00AFFF"/>
+    </svg>
+  </div>
+  <h1>O!Slice</h1>
+  <p class="subtitle">오슬라이스가 처리할 수 없는 부분을 먼저 확인하세요.</p>
+
+  <div style="background:#f5f5f5; border-radius:6px; padding:10px 12px; margin-bottom:12px; font-size:11px; color:#595959; line-height:1.6;">
+    💡 Text, Shape, Stroke, Img, GIF를 제외한 콘텐츠는 <strong>컴포넌트로 제작</strong>되어야 정확하게 인식됩니다.
+  </div>
+
+  <button onclick="runValidate()">Validate</button>
+
+  <div id="bulk-actions" style="display:none; gap:6px; margin-bottom:12px; display:none;">
+    <button id="btn-all-structure" class="bulk-btn bulk-btn-structure" onclick="fixAllStructure()">Structure 전체 수정</button>
+    <button id="btn-all-naming" class="bulk-btn bulk-btn-naming" onclick="fixAllNaming()">Naming 전체 수정</button>
+  </div>
+
+  <div id="results"></div>
+
+  <script>
+    const tagLabels = {
+      'hidden-layer': '레이어 숨김',
+      'no-autolayout': 'Auto Layout 없음',
+      'no-typography-variable': 'Typography Variable 없음',
+      'no-data-field-name': '데이터 필드명 없음',
+      'wrong-layer-name': '레이어 이름 오류',
+      'needs-list-wrapper': 'List 구조 필요',
+      'wrong-area-name': 'Area 이름 오류',
+      'invalid-screen-structure': 'Screen 구조 오류',
+      'nested-area': 'Area 중첩',
+      'needs-area-wrapper': 'Area 감싸기 필요',
+      'needs-area-grouping': 'Area 그루핑 필요',
+      'excess-top-padding': '상단 패딩 이동 필요',
+      'excess-bottom-padding': '하단 패딩 제거 필요',
+      'missing-bottom-padding': '최하단 패딩 64 필요',
+      'missing-body': 'Body 프레임 없음',
+      'screen-scroll': 'Scroll/Fixed 적용됨',
+      'screen-no-autolayout': 'Screen Auto Layout 없음',
+      'redundant-wrapper': '불필요한 Wrapper',
+      'footer-coexistence': 'Footer 중복 요소',
+    };
+
+    const STRUCTURE_ISSUES = new Set(['no-autolayout', 'needs-list-wrapper', 'nested-area', 'needs-area-wrapper', 'needs-area-grouping', 'excess-top-padding', 'excess-bottom-padding', 'missing-bottom-padding', 'missing-body', 'redundant-wrapper', 'footer-coexistence', 'screen-scroll', 'screen-no-autolayout']);
+    // invalid-screen-structure: 삭제 버튼만 (자동 수정 불가)
+    const NAMING_ISSUES = new Set(['wrong-area-name', 'wrong-layer-name']);
+
+    const knownIssues = new Set();
+    let currentIssues = [];
+
+    function runValidate() {
+      document.getElementById('results').innerHTML = '<p style="color:#8c8c8c;font-size:12px;text-align:center;padding:16px 0;">검사 중...</p>';
+      document.getElementById('bulk-actions').style.display = 'none';
+      parent.postMessage({ pluginMessage: { type: 'validate' } }, '*');
+    }
+
+    function updateBulkButtons() {
+      const activeIssues = currentIssues.filter(i => !knownIssues.has(i.nodeId));
+      const hasStructure = activeIssues.some(i => STRUCTURE_ISSUES.has(i.type));
+      const hasNaming = activeIssues.some(i => NAMING_ISSUES.has(i.type));
+      const bulk = document.getElementById('bulk-actions');
+      const btnS = document.getElementById('btn-all-structure');
+      const btnN = document.getElementById('btn-all-naming');
+      if (hasStructure || hasNaming) {
+        bulk.style.display = 'flex';
+      } else {
+        bulk.style.display = 'none';
+      }
+      btnS.style.display = hasStructure ? '' : 'none';
+      btnN.style.display = hasNaming ? '' : 'none';
+    }
+
+    function fixAllStructure() {
+      const items = currentIssues
+        .filter(i => STRUCTURE_ISSUES.has(i.type) && !knownIssues.has(i.nodeId))
+        .map(i => ({ nodeId: i.nodeId, issueType: i.type }));
+      if (items.length === 0) return;
+      document.getElementById('btn-all-structure').disabled = true;
+      parent.postMessage({ pluginMessage: { type: 'fix-all-structure', items } }, '*');
+    }
+
+    function fixAllNaming() {
+      const ids = currentIssues
+        .filter(i => NAMING_ISSUES.has(i.type) && !knownIssues.has(i.nodeId))
+        .map(i => i.nodeId);
+      if (ids.length === 0) return;
+      document.getElementById('btn-all-naming').disabled = true;
+      parent.postMessage({ pluginMessage: { type: 'fix-all-naming', nodeIds: ids } }, '*');
+    }
+
+    function fixNaming(nodeId) {
+      setLoading(nodeId, true);
+      parent.postMessage({ pluginMessage: { type: 'fix-naming', nodeId } }, '*');
+    }
+
+    function fixStructure(nodeId, issueType) {
+      setLoading(nodeId, true);
+      parent.postMessage({ pluginMessage: { type: 'fix-structure', nodeId, issueType } }, '*');
+    }
+
+    function deleteNode(nodeId, event) {
+      event.stopPropagation();
+      parent.postMessage({ pluginMessage: { type: 'delete-node', nodeId } }, '*');
+    }
+
+    function selectNode(nodeId) {
+      parent.postMessage({ pluginMessage: { type: 'select-node', nodeId } }, '*');
+    }
+
+    function toggleKnown(nodeId, event) {
+      event.stopPropagation();
+      const item = document.querySelector(`[data-node-id="${nodeId}"]`);
+      const checkbox = item.querySelector('.issue-checkbox');
+      const btns = item.querySelectorAll('.action-btn');
+      const resultsEl = document.getElementById('results');
+
+      if (knownIssues.has(nodeId)) {
+        knownIssues.delete(nodeId);
+        item.classList.remove('known');
+        checkbox.classList.remove('checked');
+        checkbox.textContent = '';
+        btns.forEach(b => b.disabled = false);
+      } else {
+        knownIssues.add(nodeId);
+        item.classList.add('known');
+        checkbox.classList.add('checked');
+        checkbox.textContent = '✓';
+        btns.forEach(b => b.disabled = true);
+        resultsEl.appendChild(item);
+      }
+      parent.postMessage({ pluginMessage: { type: 'save-known', knownIds: [...knownIssues] } }, '*');
+      updateBulkButtons();
+    }
+
+    function setLoading(nodeId, loading) {
+      const item = document.querySelector(`[data-node-id="${nodeId}"]`);
+      if (!item) return;
+      const btns = item.querySelectorAll('.action-btn');
+      let resultEl = item.querySelector('.issue-result');
+
+      if (loading) {
+        btns.forEach(b => b.disabled = true);
+        if (!resultEl) {
+          resultEl = document.createElement('div');
+          item.appendChild(resultEl);
+        }
+        resultEl.className = 'issue-result loading';
+        resultEl.innerHTML = `
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="animation:spin 1s linear infinite;flex-shrink:0">
+            <path d="M6 1v2M6 9v2M1 6h2M9 6h2M2.636 2.636l1.414 1.414M7.95 7.95l1.414 1.414M2.636 9.364l1.414-1.414M7.95 4.05l1.414-1.414" stroke="#8c8c8c" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          처리 중...
+        `;
+      } else {
+        btns.forEach(b => b.disabled = false);
+      }
+    }
+
+    function renderIssueItem(issue, isKnown) {
+      return `
+        <div class="issue-item ${isKnown ? 'known' : ''}" data-node-id="${issue.nodeId}">
+          <div class="issue-main" onclick="selectNode('${issue.nodeId}')">
+            <div class="issue-checkbox ${isKnown ? 'checked' : ''}" onclick="toggleKnown('${issue.nodeId}', event)">${isKnown ? '✓' : ''}</div>
+            <div class="issue-content">
+              <span class="issue-tag tag-${issue.type}">${tagLabels[issue.type] || issue.type}</span>
+              <div class="issue-node">${escapeHtml(issue.nodeName)}</div>
+              <div class="issue-message">${issue.message}</div>
+            </div>
+            <div class="action-buttons">
+              ${STRUCTURE_ISSUES.has(issue.type)
+                ? `<button class="action-btn btn-structure" onclick="event.stopPropagation(); fixStructure('${issue.nodeId}', '${issue.type}')" ${isKnown ? 'disabled' : ''}>Structure</button>`
+                : NAMING_ISSUES.has(issue.type)
+                ? `<button class="action-btn btn-naming" onclick="event.stopPropagation(); fixNaming('${issue.nodeId}')" ${isKnown ? 'disabled' : ''}>네이밍</button>`
+                : ''
+              }
+              <button class="action-btn btn-delete" onclick="deleteNode('${issue.nodeId}', event)" ${isKnown ? 'disabled' : ''}>삭제</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderIssues(issues) {
+      if (issues.length === 0) {
+        return `<div class="success">✅ 오슬라이스가 처리할 수 없는 항목이 없어요.</div>`;
+      }
+      const active = issues.filter(i => !knownIssues.has(i.nodeId));
+      const known = issues.filter(i => knownIssues.has(i.nodeId));
+      return `
+        <div class="count">디자이너 확인 필요 ${active.length}건</div>
+        ${active.map(i => renderIssueItem(i, false)).join('')}
+        ${known.map(i => renderIssueItem(i, true)).join('')}
+      `;
+    }
+
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      const resultsEl = document.getElementById('results');
+
+      if (msg.type === 'init-known') {
+        msg.knownIds.forEach(id => knownIssues.add(id));
+        return;
+      }
+
+      if (msg.type === 'selection-changed') {
+        currentIssues = [];
+        document.getElementById('results').innerHTML = '';
+        document.getElementById('bulk-actions').style.display = 'none';
+        return;
+      }
+
+      if (msg.type === 'error') {
+        resultsEl.innerHTML = `<div style="font-size:12px;color:#e53e3e;padding:8px 0;">${msg.message}</div>`;
+        return;
+      }
+
+      if (msg.type === 'validate-result') {
+        currentIssues = msg.issues;
+        resultsEl.innerHTML = renderIssues(msg.issues);
+        updateBulkButtons();
+      }
+
+      if (msg.type === 'rebuild-loading') {
+        setLoading(msg.nodeId, true);
+      }
+
+      if (msg.type === 'rebuild-result') {
+        const item = document.querySelector(`[data-node-id="${msg.nodeId}"]`);
+        if (!item) return;
+        setLoading(msg.nodeId, false);
+        let resultEl = item.querySelector('.issue-result');
+        if (!resultEl) {
+          resultEl = document.createElement('div');
+          item.appendChild(resultEl);
+        }
+        resultEl.className = 'issue-result';
+        resultEl.innerHTML = `
+          <div class="issue-result-label">Claude 제안</div>
+          <pre>${escapeHtml(msg.result)}</pre>
+        `;
+      }
+
+      if (msg.type === 'fix-all-done') {
+        document.getElementById('btn-all-structure').disabled = false;
+        document.getElementById('btn-all-naming').disabled = false;
+        updateBulkButtons();
+      }
+
+      if (msg.type === 'rebuild-done') {
+        const item = document.querySelector(`[data-node-id="${msg.nodeId}"]`);
+        if (!item) return;
+        setLoading(msg.nodeId, false);
+        item.querySelectorAll('.action-btn').forEach(b => b.disabled = true);
+        const existing = item.querySelector('.issue-result, .confirm-row');
+        if (existing) existing.remove();
+        const revertOps = msg.revertOps || [];
+        const confirmRow = document.createElement('div');
+        confirmRow.className = 'confirm-row';
+        confirmRow.innerHTML = `
+          <div class="confirm-check-area">
+            <div class="confirm-checkbox"></div>
+            <div class="confirm-label">수정 완료 확인</div>
+          </div>
+          <button class="revert-btn">원복</button>
+        `;
+        confirmRow.querySelector('.confirm-check-area').onclick = () => {
+          currentIssues = currentIssues.filter(i => i.nodeId !== msg.nodeId);
+          item.remove();
+          const remaining = document.querySelectorAll('.issue-item').length;
+          if (remaining === 0) {
+            document.getElementById('results').innerHTML =
+              `<div class="success">✅ 오슬라이스가 처리할 수 없는 항목이 없어요.</div>`;
+          }
+          updateBulkButtons();
+        };
+        confirmRow.querySelector('.revert-btn').onclick = () => {
+          confirmRow.querySelector('.revert-btn').disabled = true;
+          parent.postMessage({ pluginMessage: { type: 'revert', nodeId: msg.nodeId, revertOps } }, '*');
+        };
+        item.appendChild(confirmRow);
+        updateBulkButtons();
+      }
+
+      if (msg.type === 'revert-done') {
+        const item = document.querySelector(`[data-node-id="${msg.nodeId}"]`);
+        if (!item) return;
+        const confirmRow = item.querySelector('.confirm-row');
+        if (confirmRow) confirmRow.remove();
+        item.querySelectorAll('.action-btn').forEach(b => b.disabled = false);
+      }
+
+      if (msg.type === 'delete-done') {
+        const item = document.querySelector(`[data-node-id="${msg.nodeId}"]`);
+        if (!item) return;
+        item.querySelectorAll('.action-btn').forEach(b => b.disabled = true);
+        const existing = item.querySelector('.issue-result, .confirm-row');
+        if (existing) existing.remove();
+        const revertOps = msg.revertOps || [];
+        const confirmRow = document.createElement('div');
+        confirmRow.className = 'confirm-row';
+        confirmRow.innerHTML = `
+          <div class="confirm-check-area">
+            <div class="confirm-checkbox"></div>
+            <div class="confirm-label">삭제 완료 확인</div>
+          </div>
+          <button class="revert-btn">원복</button>
+        `;
+        confirmRow.querySelector('.confirm-check-area').onclick = () => {
+          parent.postMessage({ pluginMessage: { type: 'confirm-delete', nodeId: msg.nodeId } }, '*');
+          currentIssues = currentIssues.filter(i => i.nodeId !== msg.nodeId);
+          item.remove();
+          const remaining = document.querySelectorAll('.issue-item').length;
+          if (remaining === 0) {
+            document.getElementById('results').innerHTML =
+              `<div class="success">✅ 오슬라이스가 처리할 수 없는 항목이 없어요.</div>`;
+          }
+          updateBulkButtons();
+        };
+        confirmRow.querySelector('.revert-btn').onclick = () => {
+          confirmRow.querySelector('.revert-btn').disabled = true;
+          parent.postMessage({ pluginMessage: { type: 'revert', nodeId: msg.nodeId, revertOps } }, '*');
+        };
+        item.appendChild(confirmRow);
+        updateBulkButtons();
+      }
+
+      if (msg.type === 'rebuild-error') {
+        const item = document.querySelector(`[data-node-id="${msg.nodeId}"]`);
+        if (!item) return;
+        setLoading(msg.nodeId, false);
+        let resultEl = item.querySelector('.issue-result');
+        if (!resultEl) {
+          resultEl = document.createElement('div');
+          item.appendChild(resultEl);
+        }
+        resultEl.className = 'issue-result';
+        resultEl.innerHTML = `<div style="font-size:11px;color:#e53e3e;">${msg.message}</div>`;
+      }
+    };
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+  </script>
+</body>
+</html>
