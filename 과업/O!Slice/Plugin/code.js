@@ -2144,7 +2144,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-05-03T07:19:56.865Z | Total: 1 entries
+// Generated at: 2026-05-03T07:34:41.965Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",
@@ -2160,10 +2160,11 @@ const COMPONENT_REGISTRY = [
 ];
 // <REGISTRY:END>
 // ── Runtime Registry Fetch (GitHub) ────────────────────────────────────────
-// GitHub Ohouse-product-design/Gina 레포에서 MD 파일을 fetch해서
+// GitHub GinaBaek/oslice (개인 public repo) 에서 MD 파일을 fetch해서
 // COMPONENT_REGISTRY를 동적으로 갱신/추가합니다.
+// (Ohouse-product-design organization은 외부 anonymous 차단되어 fetch 불가)
 // 빌드 타임 주입은 오프라인 fallback으로 유지됩니다.
-const REGISTRY_GITHUB_API = 'https://api.github.com/repos/Ohouse-product-design/Gina/contents';
+const REGISTRY_GITHUB_API = 'https://api.github.com/repos/GinaBaek/oslice/contents';
 const REGISTRY_MD_PATHS = [
     '과업/O!Slice/[SpaceAI] 디자인 컴포넌트 md',
     // 향후 추가: '과업/O!Slice/[ODS] 디자인 컴포넌트 md',
