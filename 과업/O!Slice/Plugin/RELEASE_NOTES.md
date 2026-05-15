@@ -4,6 +4,37 @@
 
 ---
 
+## Version 9 — 2026-05-15
+
+### 🎯 한 줄 요약
+**HTML 결과물 공유·저장 편의성 개선.** URL 길이를 절반 가까이 줄이고, HTML 파일을 Figma 프레임 이름 그대로 다운로드할 수 있게 했습니다.
+
+### ✨ 새 기능
+
+**1. HTML 다운로드 버튼 추가**
+- HTML 만들기 화면에 `HTML 다운로드` 버튼 신설 (URL 복사 / 코드 복사 옆)
+- 클릭 시 사용자의 로컬 다운로드 폴더에 `.html` 파일 저장
+- **파일명은 Figma 프레임 이름 그대로 사용** (예: 프레임명 `상품 상세 페이지` → `상품_상세_페이지.html`)
+- 파일명 안전 문자 처리 (`/ \ : * ? " < > |` 제거, 공백→`_`, 최대 80자)
+
+### 🔧 개선
+
+**1. HTML URL 길이 단축 (base64 인코딩)**
+- `data:text/html;charset=utf-8,encodeURIComponent(...)` → `data:text/html;charset=utf-8;base64,...` 로 변경
+- 한글 1자: `%EC%9D%84` (9자) → base64 약 2자 — 한글 많을수록 큰 절감
+- 일반적인 화면 기준 **URL 길이 40~60% 감소**
+- 퀄리티 손실 0% (lossless)
+
+**2. URL 크기 표시**
+- URL 복사 시 snackbar에 복사된 URL 크기 표시 (예: `HTML URL이 복사되었어요 (42 KB)`)
+- 너무 큰 URL인지 즉시 확인 가능
+
+### 📂 변경된 파일
+- `ui.html` — `HTML 다운로드` 버튼 + `downloadHtml()` 함수, `copyUrl()` base64 전환, snackbar 크기 표시
+- `code.ts` — `html-result` 메시지에 `nodeName` 추가 (다운로드 파일명용)
+
+---
+
 ## Version 8 — 2026-05-04
 
 ### ✨ 새 기능

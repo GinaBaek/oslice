@@ -455,10 +455,10 @@
       box-shadow: 0 -4px 6px -2px rgba(0, 0, 0, 0.08);
     }
 
-    #btn-copy-url, #btn-copy-html {
+    #btn-copy-url, #btn-copy-html, #btn-download-html {
       transition: box-shadow 0.15s ease;
     }
-    #btn-copy-url:hover, #btn-copy-html:hover {
+    #btn-copy-url:hover, #btn-copy-html:hover, #btn-download-html:hover {
       box-shadow: inset 0 0 0 100px rgba(0, 0, 0, 0.08) !important;
     }
 
@@ -570,6 +570,7 @@
     <div style="display:flex; align-items:center; gap:8px; padding:12px 16px 12px 52px;">
       <button id="btn-copy-url" onclick="copyUrl()" style="width:auto; height:28px; min-height:28px; max-height:28px; padding:0 12px; font-size:11px; background:#00A1FF; color:white; border-radius:4px;">HTML URL 복사</button>
       <button id="btn-copy-html" onclick="copyHtml()" style="width:auto; height:28px; min-height:28px; max-height:28px; padding:0 12px; font-size:11px; background:#f0f0f0; color:#141414; border-radius:4px;">HTML 코드 복사</button>
+      <button id="btn-download-html" onclick="downloadHtml()" style="width:auto; height:28px; min-height:28px; max-height:28px; padding:0 12px; font-size:11px; background:#f0f0f0; color:#141414; border-radius:4px;">HTML 다운로드</button>
     </div>
     <div id="progress-bar" style="display:none; padding:8px 16px; background:#F0F8FC; border-bottom:1px solid #d0e8f5; font-size:11px; color:#00A1FF; font-weight:600;">
       <span id="progress-text">초기 변환 중...</span>
@@ -2798,14 +2799,39 @@ window.ICONS = {
       const html = document.getElementById('html-output').textContent;
       if (!html || html === '생성 중...') return;
       const fullDoc = buildFullDocument(html);
-      const url = 'data:text/html;charset=utf-8,' + encodeURIComponent(fullDoc);
+      // base64 인코딩 (UTF-8 안전 처리) — encodeURIComponent 대비 한글 많을수록 큰 절감
+      const b64 = btoa(unescape(encodeURIComponent(fullDoc)));
+      const url = 'data:text/html;charset=utf-8;base64,' + b64;
       const ta = document.createElement('textarea');
       ta.value = url;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      showSnackbar('HTML URL이 복사되었어요');
+      const sizeKB = Math.round(url.length / 1024);
+      showSnackbar(`HTML URL이 복사되었어요 (${sizeKB} KB)`);
+    }
+
+    function downloadHtml() {
+      const html = document.getElementById('html-output').textContent;
+      if (!html || html === '생성 중...') return;
+      const fullDoc = buildFullDocument(html);
+      const blob = new Blob([fullDoc], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      // 파일 이름: Figma 노드 이름 사용. 안전 문자만 허용.
+      let baseName = (window._lastNodeName || 'oslice-output').trim();
+      // 파일명에 위험한 문자 제거 (/ \ : * ? " < > |), 공백은 underscore로
+      baseName = baseName.replace(/[\/\\:*?"<>|]/g, '').replace(/\s+/g, '_').slice(0, 80);
+      if (!baseName) baseName = 'oslice-output';
+      const fname = `${baseName}.html`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showSnackbar(`다운로드 시작: ${fname}`);
     }
 
     function copyHtml() {
@@ -3049,6 +3075,7 @@ window.ICONS = {
         document.getElementById('html-output').textContent = inlinedHtml;
         document.getElementById('html-preview').srcdoc = buildFullDocument(inlinedHtml);
         if (msg.screenshot) document.getElementById('original-screenshot').src = msg.screenshot;
+        if (msg.nodeName) window._lastNodeName = msg.nodeName;
         document.getElementById('html-modal').style.display = 'flex';
         document.getElementById('progress-bar').style.display = 'none';
       }

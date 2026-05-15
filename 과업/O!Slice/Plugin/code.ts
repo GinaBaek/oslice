@@ -1676,7 +1676,7 @@ figma.ui.onmessage = async (msg: { type: string; nodeId?: string; issueType?: st
       }
       const html = await nodeToHtml(node as SceneNode, 0, true);
       const screenshot = await exportAsBase64Png(node as SceneNode);
-      figma.ui.postMessage({ type: 'html-result', html, screenshot });
+      figma.ui.postMessage({ type: 'html-result', html, screenshot, nodeName: node.name });
     } catch (e: any) {
       console.error('[O!Slice] Generate HTML error:', e);
       figma.ui.postMessage({ type: 'html-error', message: e.message });
@@ -2240,7 +2240,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-05-04T01:37:29.304Z | Total: 1 entries
+// Generated at: 2026-05-15T06:21:24.230Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",
