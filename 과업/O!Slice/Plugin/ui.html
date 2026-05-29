@@ -3512,15 +3512,6 @@ window.ICONS = {
             try { input.setSelectionRange(Math.min(caret, n.value.length), Math.min(caret, n.value.length)); } catch (_) {}
           }
         });
-        input.addEventListener('focus', function () {
-          // 공통 인풋의 autocomplete 드롭다운이 per-frame 행을 덮지 않게 즉시 숨김
-          var box = document.getElementById('suffix-suggestions');
-          if (box) box.style.display = 'none';
-        });
-        input.addEventListener('mousedown', function () {
-          var box = document.getElementById('suffix-suggestions');
-          if (box) box.style.display = 'none';
-        });
         input.addEventListener('keydown', function (e) {
           if (e.key === 'Enter') { e.preventDefault(); applySuffix(); }
         });
