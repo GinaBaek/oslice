@@ -1752,15 +1752,19 @@ figma.ui.onmessage = async (msg: { type: string; nodeId?: string; issueType?: st
       const suffixSet = new Set<string>();
       // ^PAGE_ID(_한글suffix)?(_숫자)?$ 패턴에서 한글 suffix만 추출
       const re = /^[A-Z][A-Z0-9_]*?_([가-힣][ㄱ-㆏가-힣_0-9]*?)(?:_\d+)?$/;
-      for (const frame of figma.currentPage.children) {
-        if (frame.type !== 'FRAME' && frame.type !== 'COMPONENT' && frame.type !== 'COMPONENT_SET') continue;
-        const m = frame.name.match(re);
-        if (m && m[1]) {
-          const cleaned = m[1].replace(/_\d+$/, '');
-          if (cleaned) suffixSet.add(cleaned.normalize('NFC'));
+      // 파일 내 모든 페이지의 top-level 프레임을 스캔 → 파일 어디서든 프레임 삭제하면 다음 모달에서 즉시 자동완성에서도 사라짐
+      try { await figma.loadAllPagesAsync(); } catch (_e) { /* dynamic-page 미지원이면 무시 */ }
+      for (const page of figma.root.children) {
+        if (page.type !== 'PAGE') continue;
+        for (const frame of page.children) {
+          if (frame.type !== 'FRAME' && frame.type !== 'COMPONENT' && frame.type !== 'COMPONENT_SET') continue;
+          const m = frame.name.match(re);
+          if (m && m[1]) {
+            const cleaned = m[1].replace(/_\d+$/, '');
+            if (cleaned) suffixSet.add(cleaned.normalize('NFC'));
+          }
         }
       }
-      // 자동완성은 "현재 페이지에 실제로 쓰이는 suffix + 시드"만. clientStorage 누적은 사용 안 함 (프레임에서 지우면 즉시 사라지게).
       figma.ui.postMessage({ type: 'suffix-suggestions', suggestions: Array.from(suffixSet).sort() });
     } catch (_e) {
       figma.ui.postMessage({ type: 'suffix-suggestions', suggestions: [] });
@@ -2375,7 +2379,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-05-29T04:36:50.961Z | Total: 1 entries
+// Generated at: 2026-05-29T05:10:51.909Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",
