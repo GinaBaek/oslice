@@ -2393,7 +2393,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-05-29T01:32:27.372Z | Total: 1 entries
+// Generated at: 2026-05-29T04:27:14.819Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",

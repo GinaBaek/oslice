@@ -658,7 +658,7 @@
           <div id="suffix-warning" style="display:none; font-size:11px; color:#fd3d4a; margin-top:6px;"></div>
           <div id="sequence-info" style="display:none; font-size:11px; color:#00A1FF; margin-top:8px;"></div>
         </div>
-        <div id="perframe-section" style="display:none; margin-top:16px;">
+        <div id="perframe-section" style="display:none; margin-top:16px; position:relative; z-index:10; background:#fff;">
           <label style="display:block; font-size:11px; color:#8c8c8c; margin-bottom:8px; font-weight:600;">프레임별 상세 (선택, 비우면 _1, _2, _3 자동)</label>
           <div id="perframe-rows" style="display:flex; flex-direction:column; gap:6px;"></div>
         </div>
@@ -3492,7 +3492,18 @@ window.ICONS = {
           + '</div>';
       }).join('');
       Array.prototype.forEach.call(rows.querySelectorAll('.perframe-input'), function (input) {
+        // IME(한글) 조합 중에는 normalize를 건너뛰어야 입력이 끊기지 않음
+        input._composing = false;
+        input.addEventListener('compositionstart', function () { input._composing = true; });
+        input.addEventListener('compositionend', function () {
+          input._composing = false;
+          // 조합 끝난 뒤 1회 normalize
+          var raw = input.value;
+          var n = normalizeSuffixInput(raw);
+          if (raw !== n.value) input.value = n.value;
+        });
         input.addEventListener('input', function () {
+          if (input._composing) return;
           var raw = input.value;
           var n = normalizeSuffixInput(raw);
           if (raw !== n.value) {
@@ -3500,6 +3511,15 @@ window.ICONS = {
             input.value = n.value;
             try { input.setSelectionRange(Math.min(caret, n.value.length), Math.min(caret, n.value.length)); } catch (_) {}
           }
+        });
+        input.addEventListener('focus', function () {
+          // 공통 인풋의 autocomplete 드롭다운이 per-frame 행을 덮지 않게 즉시 숨김
+          var box = document.getElementById('suffix-suggestions');
+          if (box) box.style.display = 'none';
+        });
+        input.addEventListener('mousedown', function () {
+          var box = document.getElementById('suffix-suggestions');
+          if (box) box.style.display = 'none';
         });
         input.addEventListener('keydown', function (e) {
           if (e.key === 'Enter') { e.preventDefault(); applySuffix(); }
