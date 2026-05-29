@@ -654,7 +654,7 @@
             onblur="onSuffixBlur()"
             onkeydown="onSuffixKeydown(event)"
             style="width:100%; height:36px; box-sizing:border-box; border:1px solid #d9d9d9; border-radius:6px; padding:0 12px; font-size:12px; font-family:inherit; outline:none;" />
-          <div id="suffix-suggestions" style="display:none; position:absolute; left:0; right:0; top:62px; max-height:180px; overflow:auto; background:#fff; border:1px solid #d9d9d9; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.08); z-index:5;"></div>
+          <div id="suffix-suggestions" style="display:none; margin-top:6px; max-height:140px; overflow:auto; background:#fff; border:1px solid #d9d9d9; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.08);"></div>
           <div id="suffix-warning" style="display:none; font-size:11px; color:#fd3d4a; margin-top:6px;"></div>
           <div id="sequence-info" style="display:none; font-size:11px; color:#00A1FF; margin-top:8px;"></div>
         </div>
@@ -3601,8 +3601,10 @@ window.ICONS = {
     function renderSuffixSuggestions(query) {
       var box = document.getElementById('suffix-suggestions');
       var all = window._suffixSuggestions || [];
+      // 완성형 한글(가-힣) 하나라도 포함된 항목만 유효. 자모(ㄱ-ㆎ)만 있는 잘못된 엔트리 제외.
+      var valid = all.filter(function (s) { return /[가-힣]/.test(s); });
       var q = (query || '').normalize('NFC');
-      var items = q ? all.filter(function (s) { return s.indexOf(q) !== -1; }) : all;
+      var items = q ? valid.filter(function (s) { return s.indexOf(q) !== -1; }) : valid;
       if (items.length === 0) {
         box.style.display = 'none';
         return;

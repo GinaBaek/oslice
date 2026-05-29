@@ -1673,12 +1673,12 @@ figma.ui.onmessage = async (msg) => {
                         suffixSet.add(cleaned.normalize('NFC'));
                 }
             }
-            // 본인 누적 히스토리 (다른 파일에서 입력한 것 포함)
+            // 본인 누적 히스토리 (다른 파일에서 입력한 것 포함). 완성형 한글 없는 미완성 엔트리는 거름.
             try {
                 const userHistory = await figma.clientStorage.getAsync('oslice-suffix-history');
                 if (Array.isArray(userHistory)) {
                     for (const s of userHistory) {
-                        if (typeof s === 'string' && s)
+                        if (typeof s === 'string' && /[가-힣]/.test(s))
                             suffixSet.add(s.normalize('NFC'));
                     }
                 }
@@ -1731,12 +1731,15 @@ figma.ui.onmessage = async (msg) => {
                 appliedNames.push(name);
             }
             // 새 suffix면 clientStorage에 누적 (본인이 다른 파일에서 작업할 때도 보임). 공통 + 프레임별 둘 다 저장.
+            // 완성형 한글(가-힣)이 하나라도 있는 항목만 유효. 자모(ㄱ-ㆎ)만 있는 엔트리는 미완성/오타로 간주하고 거름.
             try {
-                const candidates = [rawSuffix].concat(perFrameSuffixes).filter(s => !!s);
+                const candidates = [rawSuffix].concat(perFrameSuffixes).filter(s => !!s && /[가-힣]/.test(s));
                 if (candidates.length > 0) {
                     const existing = await figma.clientStorage.getAsync('oslice-suffix-history');
-                    const list = Array.isArray(existing) ? existing.filter((s) => typeof s === 'string') : [];
-                    let changed = false;
+                    const list = Array.isArray(existing)
+                        ? existing.filter((s) => typeof s === 'string' && /[가-힣]/.test(s))
+                        : [];
+                    let changed = Array.isArray(existing) ? list.length !== existing.length : false;
                     for (const s of candidates) {
                         if (list.indexOf(s) === -1) {
                             list.push(s);
@@ -2308,7 +2311,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-05-29T04:27:14.819Z | Total: 1 entries
+// Generated at: 2026-05-29T04:32:40.928Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",
