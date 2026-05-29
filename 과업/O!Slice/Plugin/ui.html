@@ -118,6 +118,34 @@
 
     .plugin-footer {
       padding: 12px 16px 16px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .map-item {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 9px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .map-item:hover { background: #f0f8fc; }
+    .map-item-id {
+      font-family: 'SF Mono', Menlo, monospace;
+      font-size: 10px;
+      color: #00A1FF;
+      background: #eaf6fd;
+      padding: 2px 6px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .map-item-name {
+      font-size: 12px;
+      color: #141414;
+      line-height: 1.4;
+      word-break: break-all;
     }
 
     button {
@@ -544,8 +572,9 @@
   </div>
 
   <div class="plugin-footer" id="footer">
-    <button id="btn-validate" onclick="runValidate()">Validate</button>
-    <button id="btn-generate-html" onclick="generateHtml()" style="display:none; background:#141414;">HTML 만들기</button>
+    <button id="btn-validate" onclick="runValidate()" style="flex:1 1 0; width:auto;">Validate</button>
+    <button id="btn-generate-html" onclick="generateHtml()" style="display:none; background:#141414; flex:1 1 0; width:auto;">HTML 만들기</button>
+    <button id="btn-map-id" onclick="mapScreenId()" style="background:#00A1FF; color:white; flex:1 1 0; width:auto;">Page ID 맵핑하기</button>
   </div>
 
   <div id="snackbar">
@@ -581,6 +610,65 @@
     </div>
     <iframe id="html-preview" style="flex:1; width:100%; border:none; background:#e0e0e0; display:none;" sandbox="allow-same-origin"></iframe>
     <pre id="html-output" style="flex:1; margin:0; padding:16px; overflow:auto; font-family:'SF Mono',Menlo,monospace; font-size:11px; line-height:1.5; background:#e0e0e0; white-space:pre-wrap; word-break:break-all; display:none;"></pre>
+  </div>
+
+  <div id="map-modal" style="display:none; position:fixed; inset:0; background:#fff; z-index:110; flex-direction:column;">
+    <div style="display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid #e0e0e0; flex-shrink:0;">
+      <button onclick="closeMapModal()" title="뒤로가기" style="width:28px; height:28px; min-height:28px; max-height:28px; padding:0; background:transparent; color:#141414; border:1px solid #e0e0e0; border-radius:4px; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 11L5 7L9 3" stroke="#141414" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <span style="font-size:13px; font-weight:700; color:#141414;">Page ID 맵핑</span>
+    </div>
+
+    <div style="padding:10px 16px; background:#f7f7f7; border-bottom:1px solid #ececec; flex-shrink:0;">
+      <div style="font-size:10px; color:#8c8c8c;">선택된 프레임</div>
+      <div id="map-target-name" style="font-size:12px; color:#141414; font-weight:600; margin-top:2px; word-break:break-all;"></div>
+      <div id="map-current" style="display:none; font-size:11px; color:#00A1FF; font-weight:600; margin-top:6px;"></div>
+    </div>
+
+    <div style="flex:1; overflow:auto; padding:14px 16px; display:flex; flex-direction:column; gap:14px;">
+      <div style="position:relative;">
+        <label style="display:block; font-size:11px; color:#8c8c8c; margin-bottom:6px; font-weight:600;">Page ID</label>
+        <button id="pageid-dropdown-btn" onclick="togglePageIdDropdown()" type="button"
+          style="width:100%; height:36px; box-sizing:border-box; border:1px solid #d9d9d9; border-radius:6px; padding:0 12px; font-size:12px; font-family:inherit; background:#fff; color:#141414; text-align:left; display:flex; align-items:center; justify-content:space-between; cursor:pointer;">
+          <span id="pageid-selected-label" style="color:#8c8c8c;">page_id를 선택해주세요</span>
+          <span id="pageid-caret" style="color:#8c8c8c; font-size:10px;">▼</span>
+        </button>
+        <div id="pageid-dropdown-panel" style="display:none; position:absolute; left:0; right:0; top:62px; max-height:260px; background:#fff; border:1px solid #d9d9d9; border-radius:6px; box-shadow:0 6px 18px rgba(0,0,0,0.1); z-index:6; flex-direction:column;">
+          <div style="padding:8px; border-bottom:1px solid #ececec; flex-shrink:0;">
+            <input id="map-search" type="text" placeholder="지면 이름 또는 ID 검색 (예: 장바구니, PDP)" oninput="renderMapList(this.value)" style="width:100%; height:30px; box-sizing:border-box; border:1px solid #d9d9d9; border-radius:4px; padding:0 8px; font-size:11px; font-family:inherit; outline:none;" />
+          </div>
+          <div id="map-count" style="padding:6px 12px 0; font-size:10px; color:#8c8c8c; flex-shrink:0;"></div>
+          <div id="map-list" style="flex:1; overflow:auto; padding:4px 8px 8px; max-height:200px;"></div>
+        </div>
+        <div id="pageid-warning" style="display:none; font-size:11px; color:#fd3d4a; margin-top:6px;"></div>
+      </div>
+
+      <div id="suffix-section" style="display:none;">
+        <div style="position:relative;">
+          <label style="display:block; font-size:11px; color:#8c8c8c; margin-bottom:6px; font-weight:600;">맥락/상태 (선택, 한글+숫자만)</label>
+          <input id="suffix-input" type="text" placeholder="예: 담았을때, 인트로 (비워두면 page_id만)"
+            autocomplete="off"
+            oninput="onSuffixInput()"
+            onfocus="onSuffixFocus()"
+            onblur="onSuffixBlur()"
+            onkeydown="onSuffixKeydown(event)"
+            style="width:100%; height:36px; box-sizing:border-box; border:1px solid #d9d9d9; border-radius:6px; padding:0 12px; font-size:12px; font-family:inherit; outline:none;" />
+          <div id="suffix-suggestions" style="display:none; position:absolute; left:0; right:0; top:62px; max-height:180px; overflow:auto; background:#fff; border:1px solid #d9d9d9; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.08); z-index:5;"></div>
+          <div id="suffix-warning" style="display:none; font-size:11px; color:#fd3d4a; margin-top:6px;"></div>
+          <div id="sequence-info" style="display:none; font-size:11px; color:#00A1FF; margin-top:8px;"></div>
+        </div>
+        <div id="perframe-section" style="display:none; margin-top:16px;">
+          <label style="display:block; font-size:11px; color:#8c8c8c; margin-bottom:8px; font-weight:600;">프레임별 상세 (선택, 비우면 _1, _2, _3 자동)</label>
+          <div id="perframe-rows" style="display:flex; flex-direction:column; gap:6px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:8px; padding:12px 16px; border-top:1px solid #e0e0e0; flex-shrink:0;">
+      <button onclick="closeMapModal()" style="flex:1; background:#f0f0f0; color:#141414;">취소</button>
+      <button onclick="applySuffix()" style="flex:2; background:#00A1FF; color:#fff;">적용</button>
+    </div>
   </div>
 
   <script>
@@ -2694,6 +2782,847 @@ window.ICONS = {
       parent.postMessage({ pluginMessage: { type: 'generate-html' } }, '*');
     }
 
+    // === 로그센터 지면 데이터 (get_enum("page_id") 번들 · 이름은 지면 설명에서 자동 파생) ===
+    window.LC_PAGES = [
+      ["ABOUT_HELP_CENTER","서비스 소개 > 고객 센터 페이지"],
+      ["ABOUT_HOME","글로벌 오늘의집 서비스 소개 페이지 > HOME"],
+      ["ABOUT_NEWS","어바웃 페이지 > 서비스 소식 탭"],
+      ["ABOUT_USER_GUIDE","서비스 소개 > 이용방법 페이지"],
+      ["ACTIVITY_DASHBOARD","크리에이터 활동 대시보드"],
+      ["AD_BANNER_DETAIL","광고 배너 상세 페이지"],
+      ["AD_DIRECT_PRODUCT_LIST","광고 상품 클릭후 랜딩되는 PLP"],
+      ["AD_PRODUCT_LIST","광고 상품 더보기 페이지"],
+      ["AI_ANALYSIS_REPORT","마이쇼핑 > AI 분석 리포트"],
+      ["AI_ANALYSIS_REPORT_RESULT","ai 상품 비교 결과 리포트 결과 화면"],
+      ["AI_ANALYSIS_REPORT_WAIT","마이쇼핑 > 글린다 AI 상품 비교 분석 진행중 화면"],
+      ["AI_ANALYSIS_REPORT_WAITING","ai 상품 비교 결과 리포트 분석중 화면"],
+      ["AI_REC_KEYWORD","AI_REC_KEYWORD 자동 생성"],
+      ["ALL_MENU","전체 메뉴 페이지"],
+      ["ANNUAL_REPORT_BEST_CONTENTS","2024 영감정산 고성과 콘텐츠"],
+      ["ANNUAL_REPORT_COVER","2024 영감정산 커버"],
+      ["ANNUAL_REPORT_DISTRIBUTION","2024 영감정산 콘텐츠 생산량 랭킹"],
+      ["ANNUAL_REPORT_ENGAGEMENT","2024 영감정산 누적 성과 정보"],
+      ["ANNUAL_REPORT_INTRO_EMPTY","2024 영감정산 커버 (비대상)"],
+      ["ANNUAL_REPORT_SHARED","2024 영감정산 공유받은 페이지"],
+      ["ANNUAL_REPORT_SUMMARY_CARD","2024 영감정산 리포트 요약 & 공유"],
+      ["APPLE_VISUAL_INTELLIGENCE","애플 visual_search 페이지"],
+      ["APP_REVIEW","앱 리뷰 유도 팝업"],
+      ["BEST","베스트"],
+      ["BINARYSHOP","쇼핑홈 바이너리샵"],
+      ["BINARYSHOP_BRAND_LINEUP","바이너리샵 브랜드 검색"],
+      ["BINARYSHOP_CATEGORY","바이너리샵 카테고리 PLP"],
+      ["BRANDHOME_CATEGORY","브랜드홈 카테고리"],
+      ["BRANDHOME_DETAIL","브랜드홈"],
+      ["BRANDHOME_STYLINGSHOT_FEED","브랜드홈 스타일링샷 피드"],
+      ["BRANDPAGE_CATEGORY","브랜드페이지홈 카테고리"],
+      ["BRANDPAGE_DETAIL","브랜드페이지홈"],
+      ["BRANDPAGE_STYLINGSHOT_FEED","브랜드페이지홈 스타일링샷 피드"],
+      ["BRAND_DETAIL","(신)브랜드홈"],
+      ["BRAND_STYLINGSHOT_FEED","(신)브랜드홈 스타일링샷 피드"],
+      ["BRAZE_IAM","브레이즈 팝업 배너"],
+      ["CANCEL_CLAIM_ERROR","취소요청 에러 페이지"],
+      ["CANCEL_DETAIL","신 클레임 취소상세"],
+      ["CART","장바구니"],
+      ["CART_ADD_PRODUCT","상품 담으러 가기 페이지"],
+      ["CATEGORY","카테고리 페이지"],
+      ["CATEGORY_MAP","카테고리 맵"],
+      ["CATEGRORY","JP 카테고리 page"],
+      ["CDP_ADVICE","노하우 상세"],
+      ["CDP_ADVICE_LIKE_USER","노하우 좋아요한 유저 페이지"],
+      ["CDP_ADVICE_PINCH","노하우 핀치줌"],
+      ["CDP_ADVICE_SCRAP_USER","노하우 스크랩한 유저 페이지"],
+      ["CDP_CARD","카드 상세"],
+      ["CDP_CARD_COLLECTION","카드콜렉션 상세"],
+      ["CDP_CARD_COLLECTIONS_USE_PRODUCT","CARD_COLLECTONS 사용된 상품 피드"],
+      ["CDP_CARD_COLLECTION_LIKE_USER","카드콜렉션 좋아요한 유저 페이지"],
+      ["CDP_CARD_COLLECTION_PINCH","카드콜렉션 핀치줌"],
+      ["CDP_CARD_COLLECTION_SCRAP_USER","카드콜렉션 스크랩한 유저 페이지"],
+      ["CDP_CARD_LIKE_USER","카드 좋아요한 유저 페이지"],
+      ["CDP_CARD_PINCH","카드 핀치줌"],
+      ["CDP_CARD_SCRAP_USER","카드 스크랩한 유저 페이지"],
+      ["CDP_COMMENT","CDP 댓글 피드"],
+      ["CDP_COMPETITION","이벤트/혜택 페이지"],
+      ["CDP_COMPETITION_ENTRIES","이벤트 참여작"],
+      ["CDP_POST","커뮤니티(꿀템발견) 게시글 상세"],
+      ["CDP_POST_PINCH","커뮤니티(꿀템발견) 게시글 상세 핀치줌"],
+      ["CDP_PROJECT","집들이 상세"],
+      ["CDP_PROJECT_GALLERY","집들이 이미지 모아보기 페이지"],
+      ["CDP_PROJECT_LIKE_USER","집들이 좋아요한 유저 페이지"],
+      ["CDP_PROJECT_PINCH","집들이 상세 핀치줌"],
+      ["CDP_PROJECT_SCRAP_USER","집들이 스크랩한 유저 페이지"],
+      ["CDP_PROJECT_USE_PRODUCT","집들이에 사용된 상품 피드"],
+      ["CDP_QUESTION","인테리어 상담소 상세"],
+      ["CHECKLIST_LOAN_QUIZ","이사플래너 전세사기 테스팅"],
+      ["CLN_APPLYFORM_AC","에어컨 청소 신청"],
+      ["CLN_APPLYFORM_MOV","입주 청소 신청"],
+      ["CLN_APPLYFORM_WASHER","세탁기 청소 신청"],
+      ["CLN_APPLYFORM_WASTE","쓰레기 수거 신청"],
+      ["CLP_ADVICE","노하우 피드"],
+      ["CLP_COMMUNITY","커뮤니티 페이지"],
+      ["CLP_COMMUNITY-NEWS","커뮤니티(오집소식) 게시글 리스트 페이지"],
+      ["CLP_COMMUNITY_HOME","커뮤니티 CLP 홈 지면"],
+      ["CLP_COMPETITION","이벤트 피드"],
+      ["CLP_CONTENT","탭바 클릭용 임의 url"],
+      ["CLP_FOLLOW","팔로우 피드"],
+      ["CLP_HASHTAGS","해시태그 CLP"],
+      ["CLP_HASHTAG_CHALLENGE","챌린지 모아보기 페이지"],
+      ["CLP_HASHTAG_CHANNEL","#채널 탭"],
+      ["CLP_INTERIOR","커뮤니티(집꾸미기) 게시글 리스트"],
+      ["CLP_LIFESTYLE","취향의 발견 피드"],
+      ["CLP_PRODUCT","커뮤니티(꿀템발견) 게시글 리스트"],
+      ["CLP_PROJECT","집들이 피드"],
+      ["CLP_QUESTION","인테리어 상담소 피드"],
+      ["CLP_TOPIC","추천 피드"],
+      ["CONTENTS_REWARD","콘텐츠 수익화 허브"],
+      ["CONTENTS_REWARD_ACTIVE","콘텐츠 수익화 활동"],
+      ["CONTENTS_REWARD_DASHBOARD","콘텐츠수익화 개별성과"],
+      ["CONTENTS_REWARD_HISTORY","콘텐츠 수익화 리워드내역"],
+      ["CONTENTS_REWARD_INTRO","콘텐츠 수익화 가입"],
+      ["CONTENTS_REWARD_REGISTER","콘텐츠 수익화 가입정보"],
+      ["CONTENTS_REWARD_URL","콘텐츠 수익화 대표 url"],
+      ["CONTENTS_REWARD_WELCOME","콘텐츠 수익화 웰컴보드"],
+      ["CONTENT_HOME","콘텐츠 메인 페이지"],
+      ["CONTENT_NL_SEARCH","콘텐츠 네비게이터 검색 결과창"],
+      ["CONTENT_NL_SEARCH_INPUT","검색어 입력창"],
+      ["COUPONMOLD_PRODUCT","쿠폰 적용 가능 상품 피드 (공용)"],
+      ["COUPON_PRODUCT","쿠폰 적용 가능 상품 피드 (개인)"],
+      ["CURATOR","오늘의집 큐레이터 페이지"],
+      ["CURATOR_ACTIVITY","오늘의집 큐레이터 활동"],
+      ["CURATOR_ANNOUNCEMENT","외부 큐레이터 공지사항"],
+      ["CURATOR_CANCEL","외부 큐레이터 프로그램 해지"],
+      ["CURATOR_DASHBOARD","큐레이터 대시보드"],
+      ["CURATOR_GUIDE","외부 큐레이터 이용안내"],
+      ["CURATOR_ID_VERIFIED","가입 개인정보 입력"],
+      ["CURATOR_INTRO","오늘의집 큐레이터 신청"],
+      ["CURATOR_MARGIN_RATE","외부 큐레이터 수수료율 안내"],
+      ["CURATOR_RECOMMENDED_PRODUCT","외부 큐레이터 추천상품"],
+      ["CURATOR_REGISTER_PLAN_SELECT","외부 큐레이터 가입-등급 선택"],
+      ["CURATOR_REGISTER_REGISTRATION","외부 큐레이터 가입-인증정보 입력"],
+      ["CURATOR_UPGRADE_PLAN_SELECT","외부 큐레이터 등급별 혜택"],
+      ["CURATOR_UPGRADE_REGISTRATION","외부 큐레이터 인증정보 수정"],
+      ["CUSTOMER_CENTER","고객센터"],
+      ["CUSTOMER_NOTICES","공지사항"],
+      ["DEEPLINK","앱 딥링크 호출 로그"],
+      ["DELIVERY_INFO","배송정보 더보기"],
+      ["DELIVERY_TRACKING","배송조회 페이지"],
+      ["EDIT_CARD","카드 수정 페이지"],
+      ["EDIT_CARD_COLLECTION","콘텐츠 수정"],
+      ["EDIT_CARD_COLLECTION_TAG","EDIT_CARD_COLLECTION_TAG 자동 생성"],
+      ["EDIT_PROFILE","유저 정보 수정"],
+      ["EDIT_PROJECT","콘텐츠 수정 페이지"],
+      ["EDIT_QUESTION","인테리어 상담소 수정"],
+      ["EMAIL_CHECKOUT","이메일 라이트 가입 페이지"],
+      ["EVENT_DETAIL","이벤트 페이지"],
+      ["EXCHANGE_CLAIM_ERROR","교환요청 에러 페이지"],
+      ["EXCHANGE_DETAIL","신 클레임 교환상세"],
+      ["EXHIBITION_DETAIL","기획전 상세"],
+      ["EXHIBITION_HOME","기획전 피드"],
+      ["EXPERT_REVIEW_WRITE","오늘의집 전문가 리뷰 작성 페이지"],
+      ["EXPERT_REVIEW_WRITE_CONTRACT_PREVIEW","리뷰 작성 중 계약 이력의 계약서를 미리보기. EXPERT_REVIEW_WRITE 퍼널에서 진입"],
+      ["EXPERT_USERS_EDIT","전문가 회원관리 수정"],
+      ["EXPERT_USERS_NEW","레거시 파트너 가입"],
+      ["FIX_APPLYFORM","제품설치 신청"],
+      ["FIX_GUIDE","제품설치 안내"],
+      ["FOR_YOU_FEED","ForYouFeed (App Only)"],
+      ["GROUP_PURCHASE_CAMPAIGN_DETAIL","공동구매 캠페인 상세 페이지"],
+      ["GROUP_PURCHASE_CAMPAIGN_LIST","공동구매 캠페인 리스트"],
+      ["GROUP_PURCHASE_JOIN_COMPLETE","공동구매 가입 완료"],
+      ["GROUP_PURCHASE_JOIN_INFO","공동구매 가입 정보 입력"],
+      ["GROUP_PURCHASE_JOIN_REQUIRE","공동구매 가입 요청"],
+      ["HOME","공통홈"],
+      ["HOME_MODULE_FEED","공통홈 모듈 더보기/배너 랜딩 피드"],
+      ["HOM_CREATE","집보기 체크리스트 시작"],
+      ["HOM_DETAIL","집보기 체크리스트 상세"],
+      ["HOM_DETAIL_EDIT","집보기 체크리스트 상세 수정"],
+      ["HOM_LIST","집보기 체크리스트 리스트"],
+      ["HOM_MAP","집보기 체크리스트 지도"],
+      ["HOM_TERMS","집보기 체크리스트 이용약관"],
+      ["HOM_TERMS_OPERATION","집보기 체크리스트 운영 정책"],
+      ["HTML_CONTENT","커머스 html 형식 배너/모듈"],
+      ["IMAGE_VIEWER","이미지 SRP 사진 뷰어"],
+      ["INTERESTINFO_ENTRY","INTERESTINFO_ENTRY 자동 생성"],
+      ["INTERESTINFO_FAMILY","온보딩 응답모듈 가족형태 수집"],
+      ["INTERESTINFO_INTRO","온보딩 인트로 페이지"],
+      ["INTERESTINFO_KEYWORD","온보딩 응답모듈 키워드 수집"],
+      ["INTERESTINFO_LAST","온보딩 응답모듈 최종 가이드 페이지"],
+      ["INTERESTINFO_LIFEEVENTS","온보딩 응답모듈 라이프이벤트 수집"],
+      ["INTERESTINFO_SPACE","온보딩 응답모듈 주거형태 수집"],
+      ["INTEREST_FEED","관심 피드"],
+      ["INTERIOR_3D_DETAIL","3D 인테리어 상세"],
+      ["INTERIOR_3D_FEED","3D 인테리어 피드"],
+      ["INTERIOR_INFO","맞춤정보 설정"],
+      ["INTERIOR_INFO_POPUP","맞춤정보 설정 유도 팝업"],
+      ["LIFECYCLE_CHECKLIST","이사플래너 체크리스트"],
+      ["LIFECYCLE_CHECKLIST_INTRO","이사플래너 온보딩"],
+      ["LIFECYCLE_RENTAL_INTERNET","이사플래너 인터넷 렌탈 메인"],
+      ["LIFECYCLE_RENTAL_INTERNET_APPLY","이사플래너 인터넷 렌탈 신청"],
+      ["LIFECYCLE_RENTAL_INTERNET_COMPLETE","이사플래너 인터넷 렌탈 신청완료"],
+      ["LIVE_COMMERCE","라이브 커머스 페이지"],
+      ["LOGOUT_POPUP","토큰 만료 자동 로그아웃 팝업"],
+      ["MEMBERSHIP_LAUNCH_ALERT","멤버십 알림 설정 페이지"],
+      ["MILEAGE_NOTICE","오늘의집 포인트 안내"],
+      ["MOVE_BENEFIT","마이페이지 LE 모듈 응답 완료"],
+      ["MOVE_RESPONSE","마이페이지 LE 모듈 응답"],
+      ["MOV_APPLYFORM","이사 신청"],
+      ["MOV_GUIDE","이사 안내"],
+      ["MOV_TERMS","이사 서비스 약관"],
+      ["MYPACKAGE","2025 글린다 나만의패키지 페이지"],
+      ["MYPACKAGE_ADD","나만의패키지 장바구니에서 가져온 상품 목록"],
+      ["MYPACKAGE_BRAND","나만의패키지 내 브랜드 묶음 할인 상품 목록 페이지"],
+      ["MYPACKAGE_COMPARE","나만의패키지 상품 비교 페이지"],
+      ["MYPACKAGE_ONBOARDING","나만의패키지 온보딩 설명"],
+      ["MYPACKAGE_PLP","2025 글린다 나만의패키지 > 상품 추가 페이지"],
+      ["MYPACKAGE_SHARE","공유받은 타인의 패키지 목록 페이지"],
+      ["MYPACKAGE_SRP","2025 글린다 나만의패키지 > 검색 결과 페이지"],
+      ["MYPAGE","마이페이지"],
+      ["MYPAGE_ACTIVATION","마이페이지 활동 피드"],
+      ["MYPAGE_BLOCKED_USERS","사용자 숨기기 설정"],
+      ["MYPAGE_COLLECTION_BOOK","마이페이지 스크랩 리스트"],
+      ["MYPAGE_COLLECTION_BOOK_FOLDER","마이페이지 스크랩북 특정폴더"],
+      ["MYPAGE_LIKES","마이페이지 좋아요"],
+      ["MYPAGE_MEMBERSHIP","멤버십 가입 후 마이페이지 - 쇼핑 내 최상단 멤버십 상태"],
+      ["MYPAGE_RECENT_PRODUCTIONS","마이페이지 최근 본 상품"],
+      ["MYREVIEW_WRITABLE","나의 리뷰 - 리뷰 남기기"],
+      ["MYREVIEW_WRITTEN","나의 리뷰 - 내가 남긴 리뷰"],
+      ["MYSHOPPING","나의쇼핑"],
+      ["MYSHOPPING_COUPON","나의쇼핑 쿠폰"],
+      ["MYSHOPPING_ORDERLIST","나의쇼핑 주문배송조회"],
+      ["MYSHOPPING_ORDERLIST_BANNER","주문배송목록"],
+      ["MYSHOPPING_POINT","나의쇼핑 포인트"],
+      ["MYSHOPPING_QNA","나의쇼핑 문의내역"],
+      ["MYSHOPPING_QNA_ORDER","나의쇼핑 주문문의"],
+      ["MYSHOPPING_RATING","나의쇼핑 회원등급"],
+      ["NOTIFICATIONS","내 소식 페이지"],
+      ["NOTIFICATION_SETTINGS","알림 설정"],
+      ["O2O_CHAT_CHANNEL","O2O 채팅 채널"],
+      ["O2O_CHAT_LIST","O2O 채팅 리스트"],
+      ["O2O_CONSULTATION_DETAIL","O2O 서비스 상담 상세"],
+      ["O2O_CONSULTATION_DETAIL_CANCEL","O2O 서비스 상담 매칭중단"],
+      ["O2O_CONSULTATION_DETAIL_DOCUMENTS_LIST","O2O 신청상세 받은문서"],
+      ["O2O_CONSULTATION_LIST","O2O 서비스 상담신청 내역"],
+      ["O2O_DIRECT_PARTIAL_HISTORY","O2O_DIRECT_PARTIAL_HISTORY 자동 생성"],
+      ["O2O_DIRECT_PART_HISTORY","O2O_DIRECT_PART_HISTORY 자동 생성"],
+      ["O2O_DOCUMENTS_DETAIL","O2O_DOCUMENTS_DETAIL 자동 생성"],
+      ["O2O_DOCUMENTS_LIST","O2O 받은문서"],
+      ["O2O_DOCUMENTS_PREVIEW","O2O 받은문서 PDF 미리보기"],
+      ["O2O_MAIN","O2O 메인(홈)"],
+      ["O2O_MAP","종합시공 업체찾기 지도뷰"],
+      ["O2O_PARTNER_CENTER_BUSINESS","O2O 사장님센터 사업자 정보"],
+      ["O2O_PARTNER_CENTER_CONTENT","O2O 사장님센터 시공사례"],
+      ["O2O_PARTNER_CENTER_DASHBOARD","사장님센터 대시보드 페이지"],
+      ["O2O_PARTNER_CENTER_HOME","O2O 사장님센터 홈화면"],
+      ["O2O_PARTNER_CENTER_MYACCOUNT","O2O 사장님센터 마이페이지"],
+      ["O2O_PARTNER_CENTER_MYHOME","O2O 사장님센터 마이홈 정보"],
+      ["O2O_PARTNER_CENTER_MYHOME_NOTICE","O2O 사장님센터 마이홈 공지"],
+      ["O2O_PARTNER_CENTER_NOTICES","O2O 사장님센터 공지사항"],
+      ["O2O_PARTNER_CENTER_REMODELING_CALENDAR","O2O 사장님센터 일정관리"],
+      ["O2O_PARTNER_CHATTING_LIST","O2O 파트너 채팅 리스트"],
+      ["O2O_PARTNER_MOVING_PAYMENT_CASH_SETTLEMENTS","O2O 파트너 결제 정산"],
+      ["O2O_PARTNER_PAYMENT_BILLING_KEY_RESULT","PG 카드 등록 콜백 페이지"],
+      ["O2O_PARTNER_PAYMENT_HISTORY","설정 > 결제 내역 페이지"],
+      ["O2O_PARTNER_PAYMENT_METHODS","O2O 자동결제 카드 선택/관리 페이지"],
+      ["O2O_PARTNER_PAYMENT_ORDER","O2O 시공 광고상품 자동결제 주문서 페이지"],
+      ["O2O_PARTNER_PAYMENT_RESULT","O2O 자동결제 결과 페이지"],
+      ["O2O_PARTNER_PRICING_PLAN","O2O 사장님센터 요금 플랜 페이지"],
+      ["O2O_PAYMENTS","O2O 결제 페이지"],
+      ["O2O_PAYMENT_ELIGIBILITY","O2O 결제페이지 적격심사 페이지"],
+      ["O2O_PROJECT_CUSTOMER","(비회원) 프로젝트 조회"],
+      ["O2O_PROJECT_DETAIL","프로젝트 모듈 상세"],
+      ["O2O_PROJECT_MAIN","프로젝트 모듈 목록"],
+      ["O2O_SERVICE_LIST","O2O 전체 서비스"],
+      ["OFFERWALL_AUCTION","오퍼월 도전 최저가 메인"],
+      ["OFFERWALL_AUCTION_BID","오퍼월 도전 최저가 도전하기"],
+      ["OFFERWALL_AUCTION_BID_COMPLETE","오퍼월 도전 최저가 도전완료 페이지"],
+      ["OFFERWALL_ENDED_ROUND","오퍼월 결과 상세보기"],
+      ["OFFERWALL_LUCKYCHECK","행운출첵"],
+      ["OFFERWALL_MAIN","오퍼월 메인"],
+      ["OFFERWALL_STOPWATCH","오퍼월동태전 게임"],
+      ["OGARDEN_GAME_HOME","오늘의가든 홈"],
+      ["OHOUSE_INTERNET","인터넷 신청 페이지"],
+      ["OHPAY_ACCOUNT_REGISTER","오늘의집 페이 계좌등록 페이지"],
+      ["OHPAY_CASH_RECEIPT","현금영수증 설정"],
+      ["OHPAY_EKYC_IDENTITY","오늘의집 머니 신분증 인증"],
+      ["OHPAY_IDENTITY","오늘의집 페이 본인인증 페이지"],
+      ["OHPAY_MOBILE_CERT_RESET","결제비밀번호 변경 본인확인"],
+      ["OHPAY_PAYMENT_METHOD","오늘의집 결제수단 페이지"],
+      ["OHPAY_PAYMENT_METHOD_MANGEMENT","결제수단 관리 페이지"],
+      ["OHPAY_PAYMENT_PASSWORD_CHANGE","결제비밀번호 변경"],
+      ["OHPAY_PAYMENT_PASSWORD_SET","오늘의집페이 결제비밀번호 등록"],
+      ["OHPAY_RECENT_HISTORY","최근 결제 내역"],
+      ["OHPAY_SERVICE_TERMINATION","오늘의집 페이 서비스 해지하기"],
+      ["OHPAY_SERVICE_TERMINATION_COMPLETE","오늘의집 페이 서비스 해지 완료"],
+      ["OHPAY_SIGNUP_COMPLETE","오늘의집페이 가입 완료"],
+      ["OHPAY_TERMS","오늘의집페이 약관동의 페이지"],
+      ["OPT_IN_EVENT","마케팅 수신동의 쿠폰팩 설명"],
+      ["ORDER_CANCEL","주문 전체 취소"],
+      ["ORDER_CANCEL_FINISH","주문 전체 취소 완료"],
+      ["ORDER_CANCEL_ORDER_OPTIONS","신 클레임 주문취소상품 선택"],
+      ["ORDER_CANCEL_REASON","신 클레임 주문취소 이유선택"],
+      ["ORDER_CANCEL_REFUND","신 클레임 주문취소환불금액"],
+      ["ORDER_CANCEL_REQUEST_ORDER_OPTIONS","신 클레임 취소요청상품 선택"],
+      ["ORDER_CANCEL_REQUEST_REASON","신 클레임 취소요청 이유선택"],
+      ["ORDER_CANCEL_REQUEST_REFUND","신 클레임 취소요청 환불금액"],
+      ["ORDER_CANCEL_REQUEST_RESULT","신 클레임 취소요청완료"],
+      ["ORDER_CANCEL_RESULT","신 클레임 주문취소요청완료"],
+      ["ORDER_CHANGEADDRESS","주문 배송지 변경"],
+      ["ORDER_CHECKOUT","주문 > 주문서"],
+      ["ORDER_DECLINE","주문 취소"],
+      ["ORDER_DETAIL","주문 > 주문상세정보"],
+      ["ORDER_EXCHANGE","주문 교환"],
+      ["ORDER_EXCHANGE_ORDER_OPTIONS","신 클레임 교환상품 선택"],
+      ["ORDER_EXCHANGE_PICKUP_METHOD","신 클레임 교환방법 선택"],
+      ["ORDER_EXCHANGE_REASON","신 클레임 교환이유 선택"],
+      ["ORDER_EXCHANGE_RESULT","신 클레임 교환요청완료"],
+      ["ORDER_INQUIRY","주문 문의"],
+      ["ORDER_NONMEMBER","비회원 주문 조회"],
+      ["ORDER_PAYMENT","주문 결제"],
+      ["ORDER_PAYMENT_RESULT","주문 결제완료"],
+      ["ORDER_RESULT","주문 완료 페이지"],
+      ["ORDER_RETURN_ORDER_OPTIONS","신 클레임 반품상품 선택"],
+      ["ORDER_RETURN_PICKUP_METHOD","신 클레임 반품방법선택"],
+      ["ORDER_RETURN_REASON","신 클레임 반품이유선택"],
+      ["ORDER_RETURN_REFUND","신 클레임 반품환불금액"],
+      ["ORDER_RETURN_RESULT","신 클레임 반품요청완료"],
+      ["PARTNERHOUSE_GOODSMALL_SIGNIN","건자재몰 파트너하우스 로그인 페이지"],
+      ["PARTNERHOUSE_GOODSMALL_SIGNUP","파트너하우스 건자재몰 가입 페이지"],
+      ["PARTNERHOUSE_SIGNIN","일반 파트너하우스 로그인 페이지"],
+      ["PARTNERHOUSE_SIGNUP","일반 파트너하우스 입점신청 페이지"],
+      ["PARTNER_ADS","파트너 광고"],
+      ["PARTNER_APPLICATION","파트너 신청"],
+      ["PARTNER_AUTH","파트너 인증"],
+      ["PARTNER_CENTER_SIGNUP","오늘의집 파트너센터 가입 페이지"],
+      ["PARTNER_ORDER_PRODUCTION","파트너 주문 생산"],
+      ["PARTNER_SIGN_IN","오늘의집 스토어 관리센터"],
+      ["PASSWORD_CHANGE","비밀번호 변경"],
+      ["PASSWORD_RESET","비밀번호 재설정"],
+      ["PAYMENT_FAIL","신 결제페이지 결제실패단계"],
+      ["PAYMENT_PAY","신 결제페이지 지불단계"],
+      ["PAYMENT_READY","신 결제페이지 주문서정합성 통과단계"],
+      ["PAYMENT_SUCCESS","신 결제페이지 결제성공단계"],
+      ["PDP","상품 상세 페이지"],
+      ["PDP_DESCRIPTIONS","PDP 상품 상세 설명 이미지 클릭"],
+      ["PDP_DETAIL","PDP 핀치줌 UI"],
+      ["PDP_GROUP","PDP > 묶음배송 상품"],
+      ["PDP_INQUIRY","PDP 문의 작성"],
+      ["PDP_OUTBOUND","PDP 미입점 출처 링크"],
+      ["PDP_PAYMENT_BENEFIT","PDP 무이자 할부 안내"],
+      ["PDP_PRODUCER_SIMILAR","디자인이 비슷한 상품 페이지"],
+      ["PDP_QUESTION","PDP > 문의 피드"],
+      ["PDP_QUESTION_LIST","모음전 PDP 문의하기 클릭 후 페이지"],
+      ["PDP_STYLINGSHOT","PDP 스타일링샷 (카드콜렉션)"],
+      ["PDP_STYLINGSHOT_DETAIL","PDP_STYLINGSHOT_FEED > 리뷰 탭(스타일링샷 모듈) or 스타일링샷 탭(카드) click"],
+      ["PDP_STYLINGSHOT_FEED","PDP 스타일링샷 피드"],
+      ["PICKUP_TRACKING","수거조회 페이지"],
+      ["POINT_BENEFIT","포인트 쌓는 꿀팁"],
+      ["POST_PHOTO_SELECT","커뮤니티 게시글 업로드 사진 선택"],
+      ["POST_PHOTO_TAG","커뮤니티 게시글 업로드 태그 등록"],
+      ["POST_PRODUCT_SELECT","커뮤니티 게시글 업로드 상품 등록"],
+      ["POST_UPLOAD","커뮤니티 게시글 업로드 기본"],
+      ["PREMIUM_BRANDTAB","프리미엄 브랜드탭"],
+      ["PREMIUM_CATEGORY","프리미엄 카테고리"],
+      ["PREMIUM_CATEGORYTAB","프리미엄 카테고리탭"],
+      ["PRIVACY_POLICY","개인정보처리방침"],
+      ["PUSH","앱 푸시 호출 로그"],
+      ["PUSH_AGREEMENT","알림 설정 팝업"],
+      ["PUSH_SETTING","마이페이지 알림 설정"],
+      ["QUOTE","QUOTE 자동 생성"],
+      ["REBRANDING_INTRODUCTION","리브랜딩 이벤트 페이지"],
+      ["RECENT_VIEWED_GOODS","최근 본 상품 리스트 페이지"],
+      ["REDELIVERY_TRACKING","재배송조회 페이지"],
+      ["RETURN_CLAIM_ERROR","반품요청 에러 페이지"],
+      ["RETURN_DETAIL","신 클레임 반품상세"],
+      ["REVIEW_BRANDPAGE","브랜드페이지홈 모든 리뷰보기"],
+      ["REVIEW_DETAIL","리뷰 상세 페이지"],
+      ["REVIEW_MYREVIEW","나의 리뷰"],
+      ["REVIEW_NEW","나의 리뷰 쓰기 모달"],
+      ["REVIEW_PDP","PDP 리뷰 피드"],
+      ["REVIEW_PHOTO_GALLERY","리뷰 사진 모아보기"],
+      ["REVIEW_UPLOAD_MEDIA","리뷰 사진 업로드 페이지"],
+      ["REVIEW_VIEW","리뷰 상세 지면"],
+      ["REVIEW_WRITE","나의 리뷰 쓰기"],
+      ["REVIEW_WRITE_SEARCH_PRODUCT","나의 리뷰 쓰기 상품 검색"],
+      ["RMD_APPLYFORM_EASYAPPLY","인테리어 간편상담 신청"],
+      ["RMD_APPLYFORM_EXPERT_SUGGESTIONS","간편상담 신청 url"],
+      ["RMD_APPLYFORM_LISTING","시공 리스팅 신청"],
+      ["RMD_APPLYFORM_LISTING_DIRECT_PART","부분직시공 신청폼"],
+      ["RMD_APPLYFORM_SYSTEMAC","시스템 에어컨 설치 신청"],
+      ["RMD_BANGSAN","방산시장 피드"],
+      ["RMD_CALCULATOR","인테리어 견적계산기"],
+      ["RMD_CLP_PROJECT","시공 업체 시공사례 피드"],
+      ["RMD_CONTRACT_CHECK_APPLY","인테리어 계약서 진단 시작"],
+      ["RMD_CONTRACT_CHECK_DETAIL","인테리어 계약서 진단 상세"],
+      ["RMD_CONTRACT_CHECK_GUIDE","인테리어 계약서 진단 안내"],
+      ["RMD_DIRECT_PART_GUIDE","부분직시공 소개 랜딩"],
+      ["RMD_DIRECT_PART_INTRO","직시공 통합랜딩 페이지"],
+      ["RMD_DISCOVERY","인테리어 업체 리스팅"],
+      ["RMD_DISCOVERY_BIZ","상업공간 인테리어 업체 리스팅"],
+      ["RMD_DISCOVERY_HOME","주거공간 인테리어 업체 리스팅"],
+      ["RMD_EASYAPPLY_ALIMTALK","알림톡으로 간편상담 신청 시 랜딩"],
+      ["RMD_EASYAPPLY_GUIDE","인테리어 간편상담 안내"],
+      ["RMD_EASYAPPLY_GUIDE_BIZ","상업공간 인테리어 간편상담 안내"],
+      ["RMD_EASYAPPLY_GUIDE_HOME","주거공간 인테리어 간편상담 안내"],
+      ["RMD_EASYAPPLY_GUIDE_PART","부분 인테리어 탭"],
+      ["RMD_EASYAPPLY_SELECT_EXPERTISES","인테리어 간편상담 분야 선택"],
+      ["RMD_GOODS_DETAIL","시공 자재 상세"],
+      ["RMD_GOODS_DETAIL_PROJECTS","시공 자재 상세 집들이 더보기"],
+      ["RMD_GOODS_FAVORITES_DETAIL","시공 자재 내 자재 리스트"],
+      ["RMD_GOODS_RANK","시공 자재 랭킹"],
+      ["RMD_MYHOME","인테리어 업체 마이홈"],
+      ["RMD_MYHOME_REVIEW","O2O 파트너사 고객 리뷰"],
+      ["RMD_PARTNER_CENTER_3D_PLANNER","O2O 사장님센터 3D 플래너 페이지"],
+      ["RMD_PARTNER_CENTER_3D_PLANNER_INFO","O2O 사장님센터 3D플래너 설계정보 페이지"],
+      ["RMD_PARTNER_CENTER_3D_PLANNER_RENDERING","O2O 사장님센터 3D플래너 랜더링 페이지"],
+      ["RMD_PARTNER_CENTER_3D_PLANNER_SHARED_FOLDER","O2O 사장님센터 3D 플래너 공유함 페이지"],
+      ["RMD_PARTNER_CENTER_3D_PLANNER_TRASH","O2O 사장님센터 3D 플래너 휴지통 페이지"],
+      ["RMD_PARTNER_CENTER_3D_PLANNER_VIDEO","O2O 사장님센터 3D플래너 비디오 페이지"],
+      ["RMD_PARTNER_CENTER_3D_PLANNER_VR","O2O 사장님센터 3D플래너 VR 페이지"],
+      ["RMD_PARTNER_CENTER_GOODS_PAYMENTS","O2O 사장님센터 자재 결제내역 페이지"],
+      ["RMD_PARTNER_CENTER_INTRO","사장님센터 소개 페이지"],
+      ["RMD_PARTNER_CENTER_INTRO_PRICING","라이트 런칭 — 4개 플랜 비교 및 신청 페이지"],
+      ["RMD_PARTNER_CENTER_ORDERS","시공 파트너 센터 주문내역 상세"],
+      ["RMD_PARTNER_CENTER_QUOTE_TEMPLATES","시공 파트너 센터 견적서 템플릿"],
+      ["RMD_PARTNER_CENTER_QUOTE_TEMPLATES_EDIT","시공 파트너 센터 견적서 템플릿 편집"],
+      ["RMD_PARTNER_CENTER_REMODELINGSTEP","시공 파트너 센터 상담내역 페이지"],
+      ["RMD_PARTNER_CENTER_REMODELINGSTEP_CREATE","사장님센터 상담등록 페이지"],
+      ["RMD_PARTNER_CENTER_REMODELINGSTEP_DETAIL_QUOTE","사장님센터 견적서 작성"],
+      ["RMD_PARTNER_CENTER_REMODELINGSTEP_DETAIL_QUOTE_PREVIEW","사장님센터 견적서 미리보기"],
+      ["RMD_PARTNER_CENTER_REMODELINGSTEP_DETAIL_REVISEDQUOTE","사장님센터 변경내역서 작성"],
+      ["RMD_PARTNER_CENTER_REMODELINGSTEP_DETAIL_REVISEDQUOTE_PREVIEW","사장님센터 변경내역서 미리보기"],
+      ["RMD_PARTNER_LIST","인테리어 파트너 리스트"],
+      ["RMD_PORTFOLIO_BIZ","상업공간 인테리어 포트폴리오 피드"],
+      ["RMD_REVIEW_CREATE","인테리어 리뷰 작성"],
+      ["RMD_REVIEW_DETAIL","인테리어 리뷰 상세"],
+      ["RMD_REVIEW_EDIT","리뷰 수정 운영 페이지"],
+      ["RMD_REVIEW_EVENT","리뷰 작성 이벤트"],
+      ["RMD_REVIEW_STORE","시공스토어 리뷰"],
+      ["RMD_STANDARD_DESCRIPTION","스탠다드 소개 페이지"],
+      ["SEARCH_FOR_TRACKING","검색 PV 트래킹 (Android only)"],
+      ["SEARCH_GALLERY","이미지 검색 업로드 페이지"],
+      ["SETTINGS","설정 페이지"],
+      ["SHOPPINGHOME","쇼핑홈"],
+      ["SHOPPINGHOME_MORE_INFO_FEED","쇼핑홈 모듈별 상품 피드"],
+      ["SIGN_IN","로그인 페이지"],
+      ["SIGN_UP_COMPLETE","가입 완료"],
+      ["SIGN_UP_EMAIL","이메일 회원 가입"],
+      ["SIGN_UP_EXIST","기가입 계정 안내"],
+      ["SIGN_UP_SNS","간편 회원 가입"],
+      ["SPACEAI_FIND_MY_ROOMBTI","내 인테리어 취향 찾기"],
+      ["SPACEAI_HOME","스방꾸 홈 지면"],
+      ["SPLASH","앱 진입 최초 대기 페이지"],
+      ["SRP_ADVICE","노하우 검색결과페이지"],
+      ["SRP_CARD","사진 검색 결과 페이지"],
+      ["SRP_COMMUNITY","검색 커뮤니티 탭"],
+      ["SRP_CONTENT","콘텐츠 검색결과 페이지"],
+      ["SRP_EXPERT","시공업체 검색결과페이지"],
+      ["SRP_IMAGE","검색 이미지 SRP 탭"],
+      ["SRP_IMAGE_SEARCH","SRP_IMAGE_SEARCH 자동 생성"],
+      ["SRP_INTEGRATED","통합 검색 결과 페이지"],
+      ["SRP_PRE_EXPERT","시공업체 검색대기페이지"],
+      ["SRP_PRE_INTEGRATED","JP 통합 검색 페이지"],
+      ["SRP_PRE_STORE","쇼핑 검색 대기 페이지"],
+      ["SRP_PROJECT","집들이 검색결과페이지"],
+      ["SRP_QUESTION","인테리어 상담소 검색 페이지"],
+      ["SRP_STORE","SRP_STORE페이지"],
+      ["SRP_USER","유저 검색결과페이지"],
+      ["TODAYSDEAL","오늘의딜"],
+      ["TWN_DETAIL","아파트 상세정보"],
+      ["TWN_DETAIL_REVIEWS","아파트 상세 시공리뷰 더보기"],
+      ["TWN_DETAIL_TOUR","아파트 상세 시공사례 더보기"],
+      ["TWN_MAP","아파트 지도"],
+      ["UPLOAD_ADVICE","노하우 업로드"],
+      ["UPLOAD_CARD_COLLECTION","사진 업로드"],
+      ["UPLOAD_CARD_COLLECTION_MEDIA","콘텐츠 업로드 미디어 선택"],
+      ["UPLOAD_CARD_COLLECTION_TAG","콘텐츠 업로드 태그입력"],
+      ["UPLOAD_CARD_COLLECTION_WRITE","콘텐츠 업로드 본문입력"],
+      ["UPLOAD_PROJECT","집들이 업로드"],
+      ["UPLOAD_QUESTION","인테리어 상담소 작성"],
+      ["USER_ADVICE","마이페이지 노하우"],
+      ["USER_BLOG_REVIEWS","전문가 유저 온라인 리뷰"],
+      ["USER_CARD","마이페이지 사진(카드)"],
+      ["USER_CARD_COLLECTION","마이페이지 사진"],
+      ["USER_FOLLOWEE","팔로잉"],
+      ["USER_FOLLOWER","팔로워"],
+      ["USER_PROJECT","마이페이지 집들이"],
+      ["USER_QUESTION","마이페이지 질문과답변"],
+      ["USER_REPLY_QUESTION","마이페이지 질문과답변 답변하기"],
+      ["USER_SURVEY","USER_SURVEY 자동 생성"],
+      ["USE_POLICY","고객 이용약관"],
+      ["VISUAL_SEARCH","VISUAL_SEARCH 페이지"],
+      ["WEDDING_CATEGORY","신혼가구 카테고리"],
+      ["WEDDING_FEED","신혼가구 홈"],
+      ["WITHDRAWAL","탈퇴 신청"]
+    ];
+
+    // 지면 목록을 page_id 알파벳순(A→Z)으로 정렬
+    window.LC_PAGES.sort(function (a, b) {
+      return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+    });
+
+    // === Page ID 맵핑 (단일 모달) ===
+    window._suffixSuggestions = [];
+    window._pendingPageId = '';
+    window._pendingPageName = '';
+
+    // 프레임 이름을 LC_PAGES 레지스트리와 매칭. 결과:
+    //   - registered: 등록된 page_id 발견 → 자동 prefill
+    //   - !registered: UPPER_SNAKE prefix는 있지만 미등록 → 경고
+    //   - null: page_id 패턴 자체가 없음 (일반 프레임)
+    function parseFrameNameForMapping(name) {
+      if (!name) return null;
+      var registry = window.LC_PAGES || [];
+      var bestPid = null, bestPageName = '', bestRest = '';
+      for (var i = 0; i < registry.length; i++) {
+        var pid = registry[i][0];
+        var pname = registry[i][1];
+        if (name === pid) {
+          if (!bestPid || pid.length > bestPid.length) { bestPid = pid; bestPageName = pname; bestRest = ''; }
+        } else if (name.length > pid.length + 1 && name.substring(0, pid.length) === pid && name.charAt(pid.length) === '_') {
+          if (!bestPid || pid.length > bestPid.length) { bestPid = pid; bestPageName = pname; bestRest = name.substring(pid.length + 1); }
+        }
+      }
+      if (bestPid !== null) {
+        var rest = bestRest;
+        var suffix = '';
+        // rest = '담았을때' or '담았을때_쿠폰' or '인트로_3' or '3' or ''
+        var seqMatch = rest.match(/^(.*)_(\d+)$/);
+        if (seqMatch && /[가-힣]/.test(seqMatch[1])) {
+          suffix = seqMatch[1];
+        } else if (/^\d+$/.test(rest)) {
+          suffix = '';
+        } else {
+          suffix = rest;
+        }
+        suffix = (suffix || '').normalize('NFC');
+        return { pageId: bestPid, pageName: bestPageName, suffix: suffix, registered: true };
+      }
+      // 미등록 UPPER_SNAKE prefix 감지 (page_id 시도 흔적)
+      var m = name.match(/^([A-Z][A-Z0-9_]*)/);
+      if (m && m[1].length >= 2) {
+        return { pageId: m[1], pageName: '', suffix: '', registered: false };
+      }
+      return null;
+    }
+
+    function showPageIdWarning(text) {
+      var w = document.getElementById('pageid-warning');
+      if (w) { w.style.display = ''; w.textContent = text; }
+    }
+
+    function hidePageIdWarning() {
+      var w = document.getElementById('pageid-warning');
+      if (w) w.style.display = 'none';
+    }
+
+    function detectAndPrefill() {
+      var names = window._selectedFrameNames || [];
+      if (names.length === 0) return;
+      var parsed = names.map(parseFrameNameForMapping);
+      var allRegistered = parsed.every(function (p) { return p && p.registered; });
+      if (allRegistered) {
+        var firstPid = parsed[0].pageId;
+        var samePid = parsed.every(function (p) { return p.pageId === firstPid; });
+        if (samePid) {
+          // 모든 프레임이 같은 등록된 page_id → 자동 선택
+          selectPageId(parsed[0].pageId, parsed[0].pageName);
+          // suffix도 모두 같으면 pre-fill
+          var firstSuffix = parsed[0].suffix;
+          var sameSuffix = parsed.every(function (p) { return p.suffix === firstSuffix; });
+          if (sameSuffix && firstSuffix) {
+            document.getElementById('suffix-input').value = firstSuffix;
+          }
+          return;
+        }
+        // 등록되어 있지만 page_id가 서로 다름 → 경고
+        showPageIdWarning('선택한 프레임의 Page ID가 서로 달라요. 위에서 다시 선택해주세요.');
+        return;
+      }
+      // 하나라도 미등록 prefix면 경고
+      var firstUnreg = null;
+      for (var i = 0; i < parsed.length; i++) {
+        if (parsed[i] && !parsed[i].registered) { firstUnreg = parsed[i]; break; }
+      }
+      if (firstUnreg) {
+        showPageIdWarning('"' + firstUnreg.pageId + '"는 등록된 Page ID가 아니에요. 위에서 다시 선택해주세요.');
+        return;
+      }
+      // page_id 패턴 자체가 없는 일반 프레임 → 기본 상태 (안내 없음)
+    }
+
+    function mapScreenId() {
+      var names = window._selectedFrameNames || [];
+      if (names.length === 0) {
+        showSnackbar('Screen 또는 Frame을 먼저 선택해주세요.');
+        return;
+      }
+      window._pendingPageId = '';
+      window._pendingPageName = '';
+      var target = names.length === 1 ? names[0] : names[0] + ' 외 ' + (names.length - 1) + '개';
+      document.getElementById('map-target-name').textContent = target;
+      document.getElementById('map-current').style.display = 'none';
+      // Page ID 드롭다운 리셋
+      var btn = document.getElementById('pageid-selected-label');
+      btn.textContent = 'page_id를 선택해주세요';
+      btn.style.color = '#8c8c8c';
+      btn.style.fontFamily = 'inherit';
+      document.getElementById('pageid-dropdown-panel').style.display = 'none';
+      document.getElementById('map-search').value = '';
+      renderMapList('');
+      hidePageIdWarning();
+      // suffix 섹션 숨김 + 리셋 (+ 프레임별 행 비우기)
+      document.getElementById('suffix-section').style.display = 'none';
+      document.getElementById('suffix-input').value = '';
+      document.getElementById('suffix-warning').style.display = 'none';
+      document.getElementById('suffix-suggestions').style.display = 'none';
+      document.getElementById('perframe-section').style.display = 'none';
+      document.getElementById('perframe-rows').innerHTML = '';
+      updateSequenceInfo();
+      document.getElementById('map-modal').style.display = 'flex';
+      parent.postMessage({ pluginMessage: { type: 'get-mapping' } }, '*');
+      parent.postMessage({ pluginMessage: { type: 'scan-suffixes' } }, '*');
+      // 프레임 이름 기반 자동 prefill / 경고 표시
+      detectAndPrefill();
+    }
+
+    function closeMapModal() {
+      document.getElementById('map-modal').style.display = 'none';
+    }
+
+    function togglePageIdDropdown() {
+      var panel = document.getElementById('pageid-dropdown-panel');
+      var caret = document.getElementById('pageid-caret');
+      var open = panel.style.display !== 'flex' && panel.style.display !== 'block';
+      if (open) {
+        panel.style.display = 'flex';
+        caret.textContent = '▲';
+        setTimeout(function () {
+          var s = document.getElementById('map-search');
+          if (s) s.focus();
+        }, 60);
+      } else {
+        panel.style.display = 'none';
+        caret.textContent = '▼';
+      }
+    }
+
+    function selectPageId(pageId, pageName) {
+      window._pendingPageId = pageId;
+      window._pendingPageName = pageName;
+      var btn = document.getElementById('pageid-selected-label');
+      btn.textContent = pageId;
+      btn.style.color = '#00A1FF';
+      btn.style.fontFamily = "'SF Mono',Menlo,monospace";
+      btn.style.fontWeight = '700';
+      document.getElementById('pageid-dropdown-panel').style.display = 'none';
+      document.getElementById('pageid-caret').textContent = '▼';
+      hidePageIdWarning();
+      // suffix 섹션 노출 + 프레임별 행 렌더링
+      document.getElementById('suffix-section').style.display = '';
+      updateSequenceInfo();
+      renderPerFrameRows();
+      setTimeout(function () {
+        var input = document.getElementById('suffix-input');
+        if (input) input.focus();
+      }, 60);
+    }
+
+    function updateSequenceInfo() {
+      var info = document.getElementById('sequence-info');
+      var count = (window._selectedFrameNames || []).length;
+      if (count > 1) {
+        info.style.display = '';
+        info.textContent = '여러 프레임 선택됨 → 위→아래, 왼쪽→오른쪽 순서로 _1 ~ _' + count + ' 자동 부여';
+      } else {
+        info.style.display = 'none';
+      }
+    }
+
+    function renderMapList(query) {
+      var q = (query || '').trim().toLowerCase();
+      var pages = window.LC_PAGES || [];
+      var items = q
+        ? pages.filter(function (p) {
+            var id = p[0].toLowerCase();
+            return id.indexOf(q) !== -1
+              || id.replace(/_/g, ' ').indexOf(q) !== -1
+              || p[1].toLowerCase().indexOf(q) !== -1;
+          })
+        : pages;
+      document.getElementById('map-count').textContent = items.length + '개 지면';
+      var list = document.getElementById('map-list');
+      if (items.length === 0) {
+        list.innerHTML = '<div style="padding:24px 8px;font-size:12px;color:#8c8c8c;text-align:center;">검색 결과가 없어요</div>';
+        return;
+      }
+      list.innerHTML = items.map(function (p) {
+        return '<div class="map-item" data-id="' + escapeHtml(p[0]) + '" data-name="' + escapeHtml(p[1]) + '">'
+          + '<span class="map-item-id">' + escapeHtml(p[0]) + '</span>'
+          + '<span class="map-item-name">' + escapeHtml(p[1]) + '</span></div>';
+      }).join('');
+    }
+
+    function applyMapping(pageId, pageName, suffix, perFrameSuffixes) {
+      parent.postMessage({
+        pluginMessage: {
+          type: 'apply-mapping',
+          pageId: pageId,
+          pageName: pageName,
+          suffix: suffix || '',
+          perFrameSuffixes: Array.isArray(perFrameSuffixes) ? perFrameSuffixes : [],
+        }
+      }, '*');
+    }
+
+    function renderPerFrameRows() {
+      var names = window._selectedFrameNames || [];
+      var section = document.getElementById('perframe-section');
+      var rows = document.getElementById('perframe-rows');
+      if (names.length <= 1) {
+        section.style.display = 'none';
+        rows.innerHTML = '';
+        return;
+      }
+      section.style.display = '';
+      rows.innerHTML = names.map(function (name, i) {
+        var safeName = escapeHtml(name);
+        var ph = '비우면 _' + (i + 1);
+        return '<div style="display:flex; align-items:center; gap:8px;">'
+          + '<div title="' + safeName + '" style="flex:0 0 92px; font-size:11px; color:#8c8c8c; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + safeName + '</div>'
+          + '<input type="text" class="perframe-input" data-index="' + i + '" placeholder="' + ph + '" autocomplete="off" '
+          + 'style="flex:1; min-width:0; height:30px; box-sizing:border-box; border:1px solid #d9d9d9; border-radius:4px; padding:0 8px; font-size:11px; font-family:inherit; outline:none;" />'
+          + '</div>';
+      }).join('');
+      Array.prototype.forEach.call(rows.querySelectorAll('.perframe-input'), function (input) {
+        input.addEventListener('input', function () {
+          var raw = input.value;
+          var n = normalizeSuffixInput(raw);
+          if (raw !== n.value) {
+            var caret = input.selectionStart;
+            input.value = n.value;
+            try { input.setSelectionRange(Math.min(caret, n.value.length), Math.min(caret, n.value.length)); } catch (_) {}
+          }
+        });
+        input.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); applySuffix(); }
+        });
+      });
+    }
+
+    function getPerFrameSuffixes() {
+      var inputs = document.querySelectorAll('.perframe-input');
+      var arr = [];
+      Array.prototype.forEach.call(inputs, function (input) {
+        var idx = parseInt(input.dataset.index || input.getAttribute('data-index') || '0', 10);
+        var n = normalizeSuffixInput(input.value || '');
+        arr[idx] = n.value;
+      });
+      return arr;
+    }
+
+    document.getElementById('map-list').addEventListener('click', function (e) {
+      var item = e.target && e.target.closest ? e.target.closest('.map-item') : null;
+      if (!item) return;
+      selectPageId(item.getAttribute('data-id'), item.getAttribute('data-name'));
+    });
+
+    function normalizeSuffixInput(raw) {
+      var v = (raw || '').normalize('NFC');
+      // 영문은 모두 제거하고 경고 표시. 한글 + 숫자 + _ + 공백만 허용.
+      var hadEnglish = /[A-Za-z]/.test(v);
+      v = v.replace(/[A-Za-z]/g, '');
+      // 공백 → _ 변환
+      v = v.replace(/\s+/g, '_');
+      // 허용 문자만 남기기 (한글, 숫자, _)
+      v = v.replace(/[^가-힣ㄱ-ㆎ0-9_]/g, '');
+      // 중복 _ → 단일 _
+      v = v.replace(/_+/g, '_');
+      // 앞뒤 _ 제거
+      v = v.replace(/^_+|_+$/g, '');
+      return { value: v, hadEnglish: hadEnglish };
+    }
+
+    function onSuffixInput() {
+      var input = document.getElementById('suffix-input');
+      var raw = input.value;
+      var n = normalizeSuffixInput(raw);
+      if (raw !== n.value) {
+        var caret = input.selectionStart;
+        input.value = n.value;
+        try { input.setSelectionRange(Math.min(caret, n.value.length), Math.min(caret, n.value.length)); } catch (_) {}
+      }
+      var warn = document.getElementById('suffix-warning');
+      if (n.hadEnglish) {
+        warn.style.display = '';
+        warn.textContent = '한글 + 숫자만 입력할 수 있어요. 영문은 자동 제거돼요.';
+      } else {
+        warn.style.display = 'none';
+      }
+      renderSuffixSuggestions(n.value);
+    }
+
+    function onSuffixFocus() {
+      renderSuffixSuggestions(document.getElementById('suffix-input').value);
+    }
+
+    function onSuffixBlur() {
+      setTimeout(function () {
+        document.getElementById('suffix-suggestions').style.display = 'none';
+      }, 150);
+    }
+
+    function onSuffixKeydown(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        applySuffix();
+      } else if (e.key === 'Escape') {
+        document.getElementById('suffix-suggestions').style.display = 'none';
+      }
+    }
+
+    function renderSuffixSuggestions(query) {
+      var box = document.getElementById('suffix-suggestions');
+      var all = window._suffixSuggestions || [];
+      var q = (query || '').normalize('NFC');
+      var items = q ? all.filter(function (s) { return s.indexOf(q) !== -1; }) : all;
+      if (items.length === 0) {
+        box.style.display = 'none';
+        return;
+      }
+      box.innerHTML = items.map(function (s) {
+        return '<div class="suffix-suggest-item" data-val="' + escapeHtml(s) + '" style="padding:8px 12px; font-size:12px; cursor:pointer; border-bottom:1px solid #f0f0f0;">' + escapeHtml(s) + '</div>';
+      }).join('');
+      box.style.display = '';
+    }
+
+    document.getElementById('suffix-suggestions').addEventListener('mousedown', function (e) {
+      var item = e.target && e.target.closest ? e.target.closest('.suffix-suggest-item') : null;
+      if (!item) return;
+      e.preventDefault();
+      var input = document.getElementById('suffix-input');
+      input.value = item.getAttribute('data-val');
+      document.getElementById('suffix-suggestions').style.display = 'none';
+      input.focus();
+    });
+
+    document.getElementById('suffix-suggestions').addEventListener('mouseover', function (e) {
+      var item = e.target && e.target.closest ? e.target.closest('.suffix-suggest-item') : null;
+      if (!item) return;
+      Array.prototype.forEach.call(document.querySelectorAll('.suffix-suggest-item'), function (el) {
+        el.style.background = '';
+      });
+      item.style.background = '#f0f8fc';
+    });
+
+    function applySuffix() {
+      if (!window._pendingPageId) {
+        showSnackbar('Page ID를 먼저 선택해주세요.');
+        return;
+      }
+      var input = document.getElementById('suffix-input');
+      var n = normalizeSuffixInput(input.value);
+      var perFrame = getPerFrameSuffixes();
+      applyMapping(window._pendingPageId, window._pendingPageName, n.value, perFrame);
+    }
+
     function closeHtmlModal() {
       document.getElementById('html-modal').style.display = 'none';
     }
@@ -3030,14 +3959,19 @@ window.ICONS = {
         document.getElementById('footer').style.display = '';
         document.getElementById('btn-validate').style.display = '';
         document.getElementById('btn-generate-html').style.display = 'none';
+        document.getElementById('btn-map-id').style.display = '';
         document.getElementById('html-modal').style.display = 'none';
+        document.getElementById('map-modal').style.display = 'none';
         const ib = document.querySelector('.info-box');
         if (ib) ib.style.display = '';
         const ph = document.querySelector('.plugin-header');
         if (ph) ph.style.display = '';
         const frameEl = document.getElementById('selected-frame');
-        if (msg.nodeName) {
-          document.getElementById('selected-frame-name').textContent = msg.nodeName;
+        window._selectedFrameNames = msg.frameNames || (msg.nodeName ? [msg.nodeName] : []);
+        const count = msg.selectionCount || window._selectedFrameNames.length;
+        if (count > 0) {
+          var label = count === 1 ? window._selectedFrameNames[0] : window._selectedFrameNames[0] + ' 외 ' + (count - 1) + '개';
+          document.getElementById('selected-frame-name').textContent = label;
           frameEl.style.display = 'flex';
         } else {
           frameEl.style.display = 'none';
@@ -3045,9 +3979,63 @@ window.ICONS = {
         return;
       }
 
+      if (msg.type === 'current-mapping') {
+        var cm = document.getElementById('map-current');
+        if (cm) {
+          if (msg.pageId) {
+            cm.style.display = '';
+            cm.textContent = '현재 맵핑: ' + msg.pageId + (msg.pageName ? ' · ' + msg.pageName : '');
+          } else {
+            cm.style.display = 'none';
+          }
+        }
+        return;
+      }
+
+      if (msg.type === 'mapping-applied') {
+        closeMapModal();
+        var count = msg.appliedCount || 1;
+        var label = msg.frameName || msg.pageId;
+        var msgText = count > 1
+          ? '"' + label + '" (외 ' + (count - 1) + '개) 로 맵핑했어요'
+          : '"' + label + '" 로 맵핑했어요';
+        showSnackbar(msgText);
+        var sfn = document.getElementById('selected-frame-name');
+        if (sfn && label) {
+          sfn.textContent = count > 1 ? label + ' 외 ' + (count - 1) + '개' : label;
+        }
+        return;
+      }
+
+      if (msg.type === 'suffix-suggestions') {
+        var seeds = ['에러', '빈상태', '로딩', '인트로', '결과', '완료', '확인', '실패', '성공'];
+        var merged = {};
+        (msg.suggestions || []).forEach(function (s) { merged[s] = true; });
+        seeds.forEach(function (s) { if (!(s in merged)) merged[s] = true; });
+        window._suffixSuggestions = Object.keys(merged).sort();
+        var section = document.getElementById('suffix-section');
+        var input = document.getElementById('suffix-input');
+        if (section && section.style.display !== 'none' && input && document.activeElement === input) {
+          renderSuffixSuggestions(input.value);
+        }
+        return;
+      }
+
+      if (msg.type === 'mapping-error') {
+        showSnackbar(msg.message || '맵핑에 실패했어요');
+        return;
+      }
+
       if (msg.type === 'no-selection-error') {
         document.getElementById('results').innerHTML = '';
-        document.getElementById('selection-error').style.display = 'flex';
+        var errEl = document.getElementById('selection-error');
+        var errSpan = errEl.querySelector('span');
+        if (errSpan) {
+          errSpan.textContent = msg.reason === 'multi'
+            ? 'Validate는 하나의 Screen 또는 Frame만 선택할 수 있어요.'
+            : 'Screen 또는 Frame을 선택해주세요.';
+        }
+        errEl.style.display = 'flex';
         return;
       }
 
@@ -3062,6 +4050,7 @@ window.ICONS = {
         updateBulkButtons();
         document.getElementById('btn-validate').style.display = 'none';
         document.getElementById('btn-generate-html').style.display = '';
+        document.getElementById('btn-map-id').style.display = 'none';
         document.getElementById('footer').style.display = '';
         const ib = document.querySelector('.info-box');
         if (ib) ib.style.display = 'none';

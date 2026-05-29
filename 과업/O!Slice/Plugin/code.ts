@@ -4,10 +4,39 @@ figma.showUI(__html__, { width: 400, height: 600 });
   const saved = await figma.clientStorage.getAsync('knownIssues');
   const knownIds: string[] = Array.isArray(saved) ? saved : [];
   figma.ui.postMessage({ type: 'init-known', knownIds });
+  // 플러그인 켜기 전에 이미 선택된 프레임이 있으면 현재 상태를 즉시 전달
+  const sel = figma.currentPage.selection;
+  const validFrames = sel.filter(n => n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'COMPONENT_SET');
+  const sorted = readingOrderSort(validFrames);
+  figma.ui.postMessage({
+    type: 'selection-changed',
+    hasValidSelection: sorted.length > 0,
+    nodeName: sorted.length > 0 ? sorted[0].name : null,
+    selectionCount: sorted.length,
+    frameNames: sorted.map(n => n.name),
+  });
 })();
 
 let lastValidatedId: string | null = null;
 let pluginSelecting = false;
+let lastMutationAt = 0;
+
+// 시각적 reading order로 정렬: 위→아래(행) → 왼쪽→오른쪽(열). 같은 행 판정은 더 작은 프레임 높이의 50% 이내.
+function readingOrderSort<T extends SceneNode>(frames: T[]): T[] {
+  return frames.slice().sort((a, b) => {
+    const ab = (a as any).absoluteBoundingBox;
+    const bb = (b as any).absoluteBoundingBox;
+    const ay = ab ? ab.y : (a as any).y || 0;
+    const by = bb ? bb.y : (b as any).y || 0;
+    const ax = ab ? ab.x : (a as any).x || 0;
+    const bx = bb ? bb.x : (b as any).x || 0;
+    const ah = ab ? ab.height : 0;
+    const bh = bb ? bb.height : 0;
+    const rowTolerance = Math.max(8, Math.min(ah, bh) * 0.5);
+    if (Math.abs(ay - by) < rowTolerance) return ax - bx;
+    return ay - by;
+  });
+}
 
 function getTopLevelFrame(node: SceneNode): FrameNode | null {
   let current: BaseNode = node;
@@ -30,19 +59,21 @@ figma.on('selectionchange', () => {
   const sel = figma.currentPage.selection;
 
   if (sel.length === 0) {
-    // 검증된 프레임이 있으면 빈 셀렉션으로 리셋하지 않음 (삭제 등 내부 조작 후 deselect)
-    if (lastValidatedId) {
+    // 플러그인 내부 조작(삭제·수정 등) 직후의 deselect는 리셋하지 않음
+    if (lastValidatedId && Date.now() - lastMutationAt < 1200) {
       figma.ui.postMessage({ type: 'node-selected', nodeId: '' });
       return;
     }
-    figma.ui.postMessage({ type: 'selection-changed', hasValidSelection: false });
+    // 사용자가 직접 프레임 선택을 해제 → 플러그인 리프레시
+    lastValidatedId = null;
+    figma.ui.postMessage({ type: 'selection-changed', hasValidSelection: false, selectionCount: 0, frameNames: [] });
     return;
   }
 
   const node = sel[0];
 
   // 선택된 노드가 마지막으로 검증한 프레임 내부이면 리셋하지 않고 nodeId만 전달
-  if (lastValidatedId) {
+  if (lastValidatedId && sel.length === 1) {
     let current: BaseNode | null = node;
     while (current) {
       if (current.id === lastValidatedId) {
@@ -55,8 +86,15 @@ figma.on('selectionchange', () => {
     lastValidatedId = null;
   }
 
-  const isValidFrame = node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'COMPONENT_SET';
-  figma.ui.postMessage({ type: 'selection-changed', hasValidSelection: isValidFrame, nodeName: isValidFrame ? node.name : null });
+  const validFrames = sel.filter(n => n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'COMPONENT_SET');
+  const sortedFrames = readingOrderSort(validFrames);
+  figma.ui.postMessage({
+    type: 'selection-changed',
+    hasValidSelection: sortedFrames.length > 0,
+    nodeName: sortedFrames.length > 0 ? sortedFrames[0].name : null,
+    selectionCount: sortedFrames.length,
+    frameNames: sortedFrames.map(n => n.name),
+  });
 });
 
 const ANTHROPIC_API_KEY = 'YOUR_API_KEY_HERE';
@@ -1498,11 +1536,16 @@ async function extractNodeTree(node: SceneNode): Promise<object> {
 // ── Message Handler ────────────────────────────────────────────────────────
 
 figma.ui.onmessage = async (msg: { type: string; nodeId?: string; issueType?: string }) => {
+  // 문서를 변경하는 조작은 시각을 기록 → 직후의 selectionchange를 내부 조작으로 판별
+  if (['fix-naming', 'fix-structure', 'fix-all-structure', 'fix-all-naming', 'revert', 'delete-node', 'confirm-delete', 'apply-mapping'].indexOf(msg.type) !== -1) {
+    lastMutationAt = Date.now();
+  }
+
   if (msg.type === 'validate') {
     try {
       const selection = figma.currentPage.selection;
-      if (selection.length === 0 || (selection[0].type !== 'FRAME' && selection[0].type !== 'COMPONENT' && selection[0].type !== 'COMPONENT_SET')) {
-        figma.ui.postMessage({ type: 'no-selection-error' });
+      if (selection.length !== 1 || (selection[0].type !== 'FRAME' && selection[0].type !== 'COMPONENT' && selection[0].type !== 'COMPONENT_SET')) {
+        figma.ui.postMessage({ type: 'no-selection-error', reason: selection.length > 1 ? 'multi' : 'none' });
         return;
       }
       lastValidatedId = selection[0].id;
@@ -1680,6 +1723,116 @@ figma.ui.onmessage = async (msg: { type: string; nodeId?: string; issueType?: st
     } catch (e: any) {
       console.error('[O!Slice] Generate HTML error:', e);
       figma.ui.postMessage({ type: 'html-error', message: e.message });
+    }
+  }
+
+  if (msg.type === 'get-mapping') {
+    try {
+      const sel = figma.currentPage.selection;
+      const validFrames = sel.filter(n => n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'COMPONENT_SET');
+      if (validFrames.length !== 1) {
+        figma.ui.postMessage({ type: 'current-mapping', pageId: '', pageName: '' });
+        return;
+      }
+      const node = validFrames[0];
+      figma.ui.postMessage({
+        type: 'current-mapping',
+        pageId: node.getPluginData('logCenterPageId') || '',
+        pageName: node.getPluginData('logCenterPageName') || '',
+      });
+    } catch (_e) {
+      figma.ui.postMessage({ type: 'current-mapping', pageId: '', pageName: '' });
+    }
+  }
+
+  if (msg.type === 'scan-suffixes') {
+    try {
+      const suffixSet = new Set<string>();
+      // ^PAGE_ID(_한글suffix)?(_숫자)?$ 패턴에서 한글 suffix만 추출
+      const re = /^[A-Z][A-Z0-9_]*?_([가-힣][ㄱ-㆏가-힣_0-9]*?)(?:_\d+)?$/;
+      for (const frame of figma.currentPage.children) {
+        if (frame.type !== 'FRAME' && frame.type !== 'COMPONENT' && frame.type !== 'COMPONENT_SET') continue;
+        const m = frame.name.match(re);
+        if (m && m[1]) {
+          const cleaned = m[1].replace(/_\d+$/, '');
+          if (cleaned) suffixSet.add(cleaned.normalize('NFC'));
+        }
+      }
+      // 본인 누적 히스토리 (다른 파일에서 입력한 것 포함)
+      try {
+        const userHistory = await figma.clientStorage.getAsync('oslice-suffix-history');
+        if (Array.isArray(userHistory)) {
+          for (const s of userHistory) {
+            if (typeof s === 'string' && s) suffixSet.add(s.normalize('NFC'));
+          }
+        }
+      } catch (_e) { /* clientStorage 실패는 무시 */ }
+      figma.ui.postMessage({ type: 'suffix-suggestions', suggestions: Array.from(suffixSet).sort() });
+    } catch (_e) {
+      figma.ui.postMessage({ type: 'suffix-suggestions', suggestions: [] });
+    }
+  }
+
+  if (msg.type === 'apply-mapping' && (msg as any).pageId) {
+    try {
+      const sel = figma.currentPage.selection;
+      const validFrames = sel.filter(n => n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'COMPONENT_SET');
+      if (validFrames.length === 0) {
+        figma.ui.postMessage({ type: 'mapping-error', message: 'Screen 또는 Frame을 먼저 선택해주세요.' });
+        return;
+      }
+      const sortedFrames = readingOrderSort(validFrames);
+      const pageId = String((msg as any).pageId);
+      const pageName = String((msg as any).pageName || pageId);
+      const rawSuffix = String((msg as any).suffix || '').normalize('NFC').trim();
+      const perFrameRaw: any[] = Array.isArray((msg as any).perFrameSuffixes) ? (msg as any).perFrameSuffixes : [];
+      const perFrameSuffixes: string[] = perFrameRaw.map(s => String(s || '').normalize('NFC').trim());
+      const base = rawSuffix ? `${pageId}_${rawSuffix}` : pageId;
+      const isMulti = sortedFrames.length > 1;
+      const appliedNames: string[] = [];
+      for (let i = 0; i < sortedFrames.length; i++) {
+        const node = sortedFrames[i];
+        const perFrame = perFrameSuffixes[i] || '';
+        let name: string;
+        if (perFrame) {
+          // 프레임별 상세가 있으면 적용
+          name = `${base}_${perFrame}`;
+        } else if (isMulti) {
+          // 비어있으면 _N fallback
+          name = `${base}_${i + 1}`;
+        } else {
+          // 단일 프레임
+          name = base;
+        }
+        (node as FrameNode).name = name;
+        node.setPluginData('logCenterPageId', pageId);
+        node.setPluginData('logCenterPageName', pageName);
+        if (rawSuffix) node.setPluginData('frameSuffix', rawSuffix);
+        appliedNames.push(name);
+      }
+      // 새 suffix면 clientStorage에 누적 (본인이 다른 파일에서 작업할 때도 보임). 공통 + 프레임별 둘 다 저장.
+      try {
+        const candidates = [rawSuffix].concat(perFrameSuffixes).filter(s => !!s);
+        if (candidates.length > 0) {
+          const existing = await figma.clientStorage.getAsync('oslice-suffix-history');
+          const list: string[] = Array.isArray(existing) ? existing.filter((s: any) => typeof s === 'string') : [];
+          let changed = false;
+          for (const s of candidates) {
+            if (list.indexOf(s) === -1) { list.push(s); changed = true; }
+          }
+          if (changed) await figma.clientStorage.setAsync('oslice-suffix-history', list);
+        }
+      } catch (_e) { /* 무시 */ }
+      figma.ui.postMessage({
+        type: 'mapping-applied',
+        pageId,
+        pageName,
+        frameName: appliedNames[0],
+        appliedCount: sortedFrames.length,
+        appliedNames,
+      });
+    } catch (e: any) {
+      figma.ui.postMessage({ type: 'mapping-error', message: `맵핑 오류: ${e.message}` });
     }
   }
 
@@ -2240,7 +2393,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-05-15T06:21:24.230Z | Total: 1 entries
+// Generated at: 2026-05-29T01:32:27.372Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",
