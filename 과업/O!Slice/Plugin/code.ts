@@ -378,6 +378,10 @@ type FrameSnapshot = {
   paddingTop: number; paddingBottom: number; paddingLeft: number; paddingRight: number;
   width: number; height: number;
   fills: readonly Paint[];
+  strokes: readonly Paint[];
+  strokeWeight: number;
+  strokeAlign: 'INSIDE' | 'OUTSIDE' | 'CENTER';
+  effects: readonly Effect[];
   clipsContent: boolean;
   childIds: string[];
 };
@@ -395,6 +399,10 @@ function snapshotFrame(frame: FrameNode): FrameSnapshot {
     paddingLeft: frame.paddingLeft, paddingRight: frame.paddingRight,
     width: frame.width, height: frame.height,
     fills: (Array.isArray(frame.fills) ? frame.fills : []) as Paint[],
+    strokes: (Array.isArray(frame.strokes) ? frame.strokes : []) as Paint[],
+    strokeWeight: typeof frame.strokeWeight === 'number' ? frame.strokeWeight : 0,
+    strokeAlign: frame.strokeAlign as 'INSIDE' | 'OUTSIDE' | 'CENTER',
+    effects: [...frame.effects] as Effect[],
     clipsContent: frame.clipsContent,
     childIds: [...frame.children].map(c => c.id),
   };
@@ -403,6 +411,12 @@ function snapshotFrame(frame: FrameNode): FrameSnapshot {
 async function restoreFrame(frame: FrameNode, snap: FrameSnapshot) {
   frame.name = snap.name;
   frame.fills = snap.fills as Paint[];
+  frame.strokes = snap.strokes as Paint[];
+  if (snap.strokes.length > 0) {
+    frame.strokeWeight = snap.strokeWeight;
+    frame.strokeAlign = snap.strokeAlign;
+  }
+  frame.effects = snap.effects as Effect[];
   frame.clipsContent = snap.clipsContent;
   frame.paddingTop = snap.paddingTop;
   frame.paddingBottom = snap.paddingBottom;
@@ -421,6 +435,25 @@ async function restoreFrame(frame: FrameNode, snap: FrameSnapshot) {
     if (snap.primaryAxisSizingMode === 'FIXED') frame.resize(snap.width, frame.height);
     if (snap.counterAxisSizingMode === 'FIXED') frame.resize(frame.width, snap.height);
   }
+}
+
+// 삭제되는 Area의 시각 속성(fills/strokes/effects/clipsContent)을 받는 쪽에 전이.
+// 받는 쪽에 이미 값이 있으면(충돌) 그대로 두고, 비어있을 때만 옮겨 손실 방지.
+function transferAreaProps(from: FrameNode, to: FrameNode): void {
+  const toFills = Array.isArray(to.fills) ? to.fills : [];
+  if (toFills.length === 0 && Array.isArray(from.fills) && from.fills.length > 0) {
+    to.fills = from.fills as Paint[];
+  }
+  const toStrokes = Array.isArray(to.strokes) ? to.strokes : [];
+  if (toStrokes.length === 0 && Array.isArray(from.strokes) && from.strokes.length > 0) {
+    to.strokes = from.strokes as Paint[];
+    if (typeof from.strokeWeight === 'number') to.strokeWeight = from.strokeWeight;
+    to.strokeAlign = from.strokeAlign;
+  }
+  if (to.effects.length === 0 && from.effects.length > 0) {
+    to.effects = from.effects as Effect[];
+  }
+  if (from.clipsContent) to.clipsContent = true;
 }
 
 type RevertOp =
@@ -867,11 +900,15 @@ async function applyStructureFix(nodeId: string): Promise<RevertOp[]> {
       if (removeOuter && outerArea.parent && outerArea.parent.type === 'FRAME') {
         const gpFrame = outerArea.parent as FrameNode;
         const outerIndex = [...gpFrame.children].indexOf(outerArea as any);
+        // 받는 쪽(gpFrame)의 시각 속성도 snapshot으로 revert 가능하게
+        ops.push({ op: 'remove-layout', nodeId: gpFrame.id, snap: snapshotFrame(gpFrame) });
         ops.push({ op: 'rewrap-area', parentId: gpFrame.id, insertIndex: outerIndex, snap: snapshotFrame(outerArea), parentPaddingSnap: { pt: gpFrame.paddingTop, pb: gpFrame.paddingBottom, pl: gpFrame.paddingLeft, pr: gpFrame.paddingRight } });
+        // 패딩 합산 + 시각 속성 전이 (받는 쪽이 비어있을 때만)
         gpFrame.paddingTop += outerArea.paddingTop;
         gpFrame.paddingBottom += outerArea.paddingBottom;
         gpFrame.paddingLeft += outerArea.paddingLeft;
         gpFrame.paddingRight += outerArea.paddingRight;
+        transferAreaProps(outerArea, gpFrame);
         const kids = [...outerArea.children];
         for (let i = kids.length - 1; i >= 0; i--) gpFrame.insertChild(outerIndex, kids[i]);
         outerArea.remove();
@@ -879,11 +916,13 @@ async function applyStructureFix(nodeId: string): Promise<RevertOp[]> {
       } else {
         const parentFrame = frame.parent as FrameNode;
         const frameIndex = [...parentFrame.children].indexOf(frame as any);
+        ops.push({ op: 'remove-layout', nodeId: parentFrame.id, snap: snapshotFrame(parentFrame) });
         ops.push({ op: 'rewrap-area', parentId: parentFrame.id, insertIndex: frameIndex, snap: snapshotFrame(frame), parentPaddingSnap: { pt: parentFrame.paddingTop, pb: parentFrame.paddingBottom, pl: parentFrame.paddingLeft, pr: parentFrame.paddingRight } });
         parentFrame.paddingTop += frame.paddingTop;
         parentFrame.paddingBottom += frame.paddingBottom;
         parentFrame.paddingLeft += frame.paddingLeft;
         parentFrame.paddingRight += frame.paddingRight;
+        transferAreaProps(frame, parentFrame);
         const kids = [...frame.children];
         for (let i = kids.length - 1; i >= 0; i--) parentFrame.insertChild(frameIndex, kids[i]);
         frame.remove();
@@ -907,16 +946,18 @@ async function applyStructureFix(nodeId: string): Promise<RevertOp[]> {
     return ops;
   }
 
-  // 불필요한 wrapper → ungroup
+  // 불필요한 wrapper → ungroup (시각 속성도 받는 쪽에 전이, 받는 쪽 snapshot 추가)
   if (frame.parent && frame.parent.type === 'FRAME') {
     const parentFrame = frame.parent as FrameNode;
     if (isStructuralName(parentFrame.name) && !isStructuralName(frame.name)) {
       const frameIndex = [...parentFrame.children].indexOf(frame as any);
+      ops.push({ op: 'remove-layout', nodeId: parentFrame.id, snap: snapshotFrame(parentFrame) });
       ops.push({ op: 'rewrap-area', parentId: parentFrame.id, insertIndex: frameIndex, snap: snapshotFrame(frame), parentPaddingSnap: { pt: parentFrame.paddingTop, pb: parentFrame.paddingBottom, pl: parentFrame.paddingLeft, pr: parentFrame.paddingRight } });
       parentFrame.paddingTop += frame.paddingTop;
       parentFrame.paddingBottom += frame.paddingBottom;
       parentFrame.paddingLeft += frame.paddingLeft;
       parentFrame.paddingRight += frame.paddingRight;
+      transferAreaProps(frame, parentFrame);
       const kids = [...frame.children];
       for (let i = kids.length - 1; i >= 0; i--) parentFrame.insertChild(frameIndex, kids[i]);
       frame.remove();
@@ -1678,19 +1719,23 @@ async function fixRedundantWrapper(nodeId: string): Promise<RevertOp[]> {
     return [{ op: 'rename', nodeId: frame.id, name: oldName }];
   }
 
-  // 케이스 C: ungroup (children을 부모로 올리고 frame remove)
+  // 케이스 C: ungroup (children을 부모로 올리고 frame remove). 시각 속성도 전이.
   const frameIndex = [...parentFrame.children].indexOf(frame as any);
-  const ops: RevertOp[] = [{
-    op: 'rewrap-area',
-    parentId: parentFrame.id,
-    insertIndex: frameIndex,
-    snap: snapshotFrame(frame),
-    parentPaddingSnap: { pt: parentFrame.paddingTop, pb: parentFrame.paddingBottom, pl: parentFrame.paddingLeft, pr: parentFrame.paddingRight },
-  }];
+  const ops: RevertOp[] = [
+    { op: 'remove-layout', nodeId: parentFrame.id, snap: snapshotFrame(parentFrame) },
+    {
+      op: 'rewrap-area',
+      parentId: parentFrame.id,
+      insertIndex: frameIndex,
+      snap: snapshotFrame(frame),
+      parentPaddingSnap: { pt: parentFrame.paddingTop, pb: parentFrame.paddingBottom, pl: parentFrame.paddingLeft, pr: parentFrame.paddingRight },
+    },
+  ];
   parentFrame.paddingTop += frame.paddingTop;
   parentFrame.paddingBottom += frame.paddingBottom;
   parentFrame.paddingLeft += frame.paddingLeft;
   parentFrame.paddingRight += frame.paddingRight;
+  transferAreaProps(frame, parentFrame);
   for (let i = frameChildren.length - 1; i >= 0; i--) parentFrame.insertChild(frameIndex, frameChildren[i]);
   frame.remove();
   return ops;
@@ -2601,7 +2646,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T06:23:45.998Z | Total: 1 entries
+// Generated at: 2026-06-09T06:38:29.823Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",
