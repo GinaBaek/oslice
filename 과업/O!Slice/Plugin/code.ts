@@ -357,8 +357,8 @@ async function countAreaViolations(frame: FrameNode): Promise<number> {
   if (frame.paddingBottom > 0) count++;
   // 4. Auto-layout 없음
   if (frame.layoutMode === 'NONE') count++;
-  // 5. 부모가 auto-layout인데 가로 Fill 아님
-  if (frame.parent && frame.parent.type === 'FRAME' && (frame.parent as FrameNode).layoutMode !== 'NONE') {
+  // 5. 부모가 VERTICAL auto-layout인데 가로 Fill 아님 (HORIZONTAL 부모는 다양한 sizing 허용)
+  if (frame.parent && frame.parent.type === 'FRAME' && (frame.parent as FrameNode).layoutMode === 'VERTICAL') {
     const sizing = (frame as any).layoutSizingHorizontal;
     if (sizing !== undefined && sizing !== 'FILL') count++;
   }
@@ -1431,11 +1431,12 @@ async function detectEdgeCases(node: SceneNode, issues: Issue[]) {
       }
     }
 
-    // 가로 Fill 검사 (부모가 Auto Layout인 경우)
+    // 가로 Fill 검사: 부모가 VERTICAL auto-layout일 때만 강제.
+    // HORIZONTAL 부모(특히 SPACE_BETWEEN auto gap)에서는 자식이 Hug/Fixed/Fill 등 디자인 의도대로 다양해야 하므로 강제 안 함.
     if (
       frame.parent &&
       frame.parent.type === 'FRAME' &&
-      (frame.parent as FrameNode).layoutMode !== 'NONE'
+      (frame.parent as FrameNode).layoutMode === 'VERTICAL'
     ) {
       const sizing = (frame as any).layoutSizingHorizontal;
       if (sizing !== undefined && sizing !== 'FILL') {
@@ -2646,7 +2647,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T06:38:29.823Z | Total: 1 entries
+// Generated at: 2026-06-09T06:48:19.666Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",
