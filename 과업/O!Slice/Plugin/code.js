@@ -257,12 +257,25 @@ async function computeAreaName(frame) {
         else if (child.type === 'FRAME') {
             const cf = child;
             if (isListLikeFrame(cf)) {
-                // List / Row 구조 → 내부 모듈 이름으로 표현
-                const moduleInst = findFirstInstance(cf);
-                if (moduleInst) {
-                    const name = await getCompName(moduleInst);
-                    if (!parts.includes(name))
-                        parts.push(name);
+                // List 첫 항목이 FRAME(예: Row[Text, Comp])이면 그 안의 콘텐츠 패턴 전체를 반영
+                // 예: List > Row > [Text, Comp] → 'Text + Comp Area'
+                const firstItem = cf.children[0];
+                if (firstItem && firstItem.type === 'FRAME') {
+                    const rowInnerName = await computeAreaName(firstItem);
+                    const rowParts = rowInnerName.replace(/ Area$/, '').split(' + ');
+                    for (const p of rowParts) {
+                        if (p && p !== firstItem.name && !parts.includes(p))
+                            parts.push(p);
+                    }
+                }
+                else {
+                    // List 직접 자식이 INSTANCE면 첫 모듈 이름 사용 (기존 동작)
+                    const moduleInst = findFirstInstance(cf);
+                    if (moduleInst) {
+                        const name = await getCompName(moduleInst);
+                        if (!parts.includes(name))
+                            parts.push(name);
+                    }
                 }
             }
             else {
@@ -769,29 +782,29 @@ async function applyStructureFix(nodeId) {
         ops.push({ op: 'unwrap-list', parentId: parentFrame.id, listId: area.id });
         return ops;
     }
-    // 중첩 Area → 최상위 Area ungroup
+    // 중첩 Area → inner Area(frame 자체) ungroup. outer Area는 보존(더 풍부한 이름을 가질 수 있어서).
     if (frame.name.endsWith('Area')) {
-        // 조상 중 가장 상위 Area를 찾음
-        let topArea = frame;
+        let hasAncestorArea = false;
         let cursor = frame.parent;
         while (cursor && cursor.type !== 'PAGE') {
             if (cursor.type === 'FRAME' && cursor.name.endsWith('Area')) {
-                topArea = cursor;
+                hasAncestorArea = true;
+                break;
             }
             cursor = cursor.parent;
         }
-        if (topArea !== frame && topArea.parent && topArea.parent.type === 'FRAME') {
-            const parentFrame = topArea.parent;
-            const topIndex = [...parentFrame.children].indexOf(topArea);
-            ops.push({ op: 'rewrap-area', parentId: parentFrame.id, insertIndex: topIndex, snap: snapshotFrame(topArea), parentPaddingSnap: { pt: parentFrame.paddingTop, pb: parentFrame.paddingBottom, pl: parentFrame.paddingLeft, pr: parentFrame.paddingRight } });
-            parentFrame.paddingTop += topArea.paddingTop;
-            parentFrame.paddingBottom += topArea.paddingBottom;
-            parentFrame.paddingLeft += topArea.paddingLeft;
-            parentFrame.paddingRight += topArea.paddingRight;
-            const kids = [...topArea.children];
+        if (hasAncestorArea && frame.parent && frame.parent.type === 'FRAME') {
+            const parentFrame = frame.parent;
+            const frameIndex = [...parentFrame.children].indexOf(frame);
+            ops.push({ op: 'rewrap-area', parentId: parentFrame.id, insertIndex: frameIndex, snap: snapshotFrame(frame), parentPaddingSnap: { pt: parentFrame.paddingTop, pb: parentFrame.paddingBottom, pl: parentFrame.paddingLeft, pr: parentFrame.paddingRight } });
+            parentFrame.paddingTop += frame.paddingTop;
+            parentFrame.paddingBottom += frame.paddingBottom;
+            parentFrame.paddingLeft += frame.paddingLeft;
+            parentFrame.paddingRight += frame.paddingRight;
+            const kids = [...frame.children];
             for (let i = kids.length - 1; i >= 0; i--)
-                parentFrame.insertChild(topIndex, kids[i]);
-            topArea.remove();
+                parentFrame.insertChild(frameIndex, kids[i]);
+            frame.remove();
             return ops;
         }
     }
@@ -1146,16 +1159,25 @@ async function detectEdgeCases(node, issues) {
                 }
             }
         }
-        // Body 자체의 하단 패딩 64 필수 (+ 최하단 자식의 하단 패딩이 남아 있으면 함께 제거 대상으로 안내)
+        // Body 자체의 하단 패딩 64 필수 (+ Body 내 last-child 체인의 어느 FRAME이라도 하단 패딩이 있으면 함께 제거)
         if (frame.name === 'Body') {
-            const bodyChildren = [...frame.children];
-            const lastChild = bodyChildren[bodyChildren.length - 1];
-            const lastChildHasBottom = !!(lastChild && lastChild.type === 'FRAME' && lastChild.paddingBottom > 0);
+            const offending = [];
+            let cursor = frame;
+            while (true) {
+                const last = cursor.children[cursor.children.length - 1];
+                if (!last || last.type !== 'FRAME')
+                    break;
+                const lf = last;
+                if (lf.paddingBottom > 0)
+                    offending.push(lf);
+                cursor = lf;
+            }
             const bodyBottomWrong = frame.paddingBottom !== 64;
-            if (bodyBottomWrong || lastChildHasBottom) {
+            if (bodyBottomWrong || offending.length > 0) {
                 let msg = `Body의 하단 패딩이 ${frame.paddingBottom}px예요. 64px로 설정해야 해요.`;
-                if (lastChildHasBottom) {
-                    msg += ` (최하단 자식 "${lastChild.name}"의 하단 패딩 ${lastChild.paddingBottom}px도 함께 제거됩니다.)`;
+                if (offending.length > 0) {
+                    const names = offending.map(f => `"${f.name}"(${f.paddingBottom}px)`).join(', ');
+                    msg += ` (${names}의 하단 패딩도 함께 제거됩니다.)`;
                 }
                 issues.push({
                     type: 'missing-bottom-padding',
@@ -1444,12 +1466,19 @@ async function fixMissingBottomPadding(nodeId) {
         throw new Error('노드를 찾을 수 없어요.');
     const frame = node;
     const ops = [{ op: 'remove-layout', nodeId: frame.id, snap: snapshotFrame(frame) }];
-    // Body인 경우: 최하단 자식의 잔여 하단 패딩 제거 → Body 자체에 64 설정
+    // Body인 경우: last-child 체인의 모든 FRAME에서 잔여 하단 패딩 제거 → Body 자체에 64 설정
     if (frame.name === 'Body') {
-        const lastChild = frame.children[frame.children.length - 1];
-        if (lastChild && lastChild.type === 'FRAME' && lastChild.paddingBottom > 0) {
-            ops.push({ op: 'remove-layout', nodeId: lastChild.id, snap: snapshotFrame(lastChild) });
-            lastChild.paddingBottom = 0;
+        let cursor = frame;
+        while (true) {
+            const last = cursor.children[cursor.children.length - 1];
+            if (!last || last.type !== 'FRAME')
+                break;
+            const lf = last;
+            if (lf.paddingBottom > 0) {
+                ops.push({ op: 'remove-layout', nodeId: lf.id, snap: snapshotFrame(lf) });
+                lf.paddingBottom = 0;
+            }
+            cursor = lf;
         }
     }
     frame.paddingBottom = 64;
@@ -2447,7 +2476,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T06:07:42.240Z | Total: 1 entries
+// Generated at: 2026-06-09T06:19:31.506Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",

@@ -258,11 +258,22 @@ async function computeAreaName(frame: FrameNode): Promise<string> {
     } else if (child.type === 'FRAME') {
       const cf = child as FrameNode;
       if (isListLikeFrame(cf)) {
-        // List / Row 구조 → 내부 모듈 이름으로 표현
-        const moduleInst = findFirstInstance(cf);
-        if (moduleInst) {
-          const name = await getCompName(moduleInst);
-          if (!parts.includes(name)) parts.push(name);
+        // List 첫 항목이 FRAME(예: Row[Text, Comp])이면 그 안의 콘텐츠 패턴 전체를 반영
+        // 예: List > Row > [Text, Comp] → 'Text + Comp Area'
+        const firstItem = cf.children[0];
+        if (firstItem && firstItem.type === 'FRAME') {
+          const rowInnerName = await computeAreaName(firstItem as FrameNode);
+          const rowParts = rowInnerName.replace(/ Area$/, '').split(' + ');
+          for (const p of rowParts) {
+            if (p && p !== (firstItem as FrameNode).name && !parts.includes(p)) parts.push(p);
+          }
+        } else {
+          // List 직접 자식이 INSTANCE면 첫 모듈 이름 사용 (기존 동작)
+          const moduleInst = findFirstInstance(cf);
+          if (moduleInst) {
+            const name = await getCompName(moduleInst);
+            if (!parts.includes(name)) parts.push(name);
+          }
         }
       } else {
         // 일반 FRAME(예: Title Area, Text Area 같은 wrapper)도 내부 콘텐츠를 재귀로 추출해서 parts에 합침
@@ -814,28 +825,28 @@ async function applyStructureFix(nodeId: string): Promise<RevertOp[]> {
     return ops;
   }
 
-  // 중첩 Area → 최상위 Area ungroup
+  // 중첩 Area → inner Area(frame 자체) ungroup. outer Area는 보존(더 풍부한 이름을 가질 수 있어서).
   if (frame.name.endsWith('Area')) {
-    // 조상 중 가장 상위 Area를 찾음
-    let topArea: FrameNode = frame;
+    let hasAncestorArea = false;
     let cursor: any = frame.parent;
     while (cursor && cursor.type !== 'PAGE') {
       if (cursor.type === 'FRAME' && (cursor as FrameNode).name.endsWith('Area')) {
-        topArea = cursor as FrameNode;
+        hasAncestorArea = true;
+        break;
       }
       cursor = cursor.parent;
     }
-    if (topArea !== frame && topArea.parent && topArea.parent.type === 'FRAME') {
-      const parentFrame = topArea.parent as FrameNode;
-      const topIndex = [...parentFrame.children].indexOf(topArea as any);
-      ops.push({ op: 'rewrap-area', parentId: parentFrame.id, insertIndex: topIndex, snap: snapshotFrame(topArea), parentPaddingSnap: { pt: parentFrame.paddingTop, pb: parentFrame.paddingBottom, pl: parentFrame.paddingLeft, pr: parentFrame.paddingRight } });
-      parentFrame.paddingTop += topArea.paddingTop;
-      parentFrame.paddingBottom += topArea.paddingBottom;
-      parentFrame.paddingLeft += topArea.paddingLeft;
-      parentFrame.paddingRight += topArea.paddingRight;
-      const kids = [...topArea.children];
-      for (let i = kids.length - 1; i >= 0; i--) parentFrame.insertChild(topIndex, kids[i]);
-      topArea.remove();
+    if (hasAncestorArea && frame.parent && frame.parent.type === 'FRAME') {
+      const parentFrame = frame.parent as FrameNode;
+      const frameIndex = [...parentFrame.children].indexOf(frame as any);
+      ops.push({ op: 'rewrap-area', parentId: parentFrame.id, insertIndex: frameIndex, snap: snapshotFrame(frame), parentPaddingSnap: { pt: parentFrame.paddingTop, pb: parentFrame.paddingBottom, pl: parentFrame.paddingLeft, pr: parentFrame.paddingRight } });
+      parentFrame.paddingTop += frame.paddingTop;
+      parentFrame.paddingBottom += frame.paddingBottom;
+      parentFrame.paddingLeft += frame.paddingLeft;
+      parentFrame.paddingRight += frame.paddingRight;
+      const kids = [...frame.children];
+      for (let i = kids.length - 1; i >= 0; i--) parentFrame.insertChild(frameIndex, kids[i]);
+      frame.remove();
       return ops;
     }
   }
@@ -1220,16 +1231,23 @@ async function detectEdgeCases(node: SceneNode, issues: Issue[]) {
       }
     }
 
-    // Body 자체의 하단 패딩 64 필수 (+ 최하단 자식의 하단 패딩이 남아 있으면 함께 제거 대상으로 안내)
+    // Body 자체의 하단 패딩 64 필수 (+ Body 내 last-child 체인의 어느 FRAME이라도 하단 패딩이 있으면 함께 제거)
     if (frame.name === 'Body') {
-      const bodyChildren = [...frame.children];
-      const lastChild = bodyChildren[bodyChildren.length - 1];
-      const lastChildHasBottom = !!(lastChild && lastChild.type === 'FRAME' && (lastChild as FrameNode).paddingBottom > 0);
+      const offending: FrameNode[] = [];
+      let cursor: FrameNode = frame;
+      while (true) {
+        const last = cursor.children[cursor.children.length - 1];
+        if (!last || last.type !== 'FRAME') break;
+        const lf = last as FrameNode;
+        if (lf.paddingBottom > 0) offending.push(lf);
+        cursor = lf;
+      }
       const bodyBottomWrong = frame.paddingBottom !== 64;
-      if (bodyBottomWrong || lastChildHasBottom) {
+      if (bodyBottomWrong || offending.length > 0) {
         let msg = `Body의 하단 패딩이 ${frame.paddingBottom}px예요. 64px로 설정해야 해요.`;
-        if (lastChildHasBottom) {
-          msg += ` (최하단 자식 "${(lastChild as FrameNode).name}"의 하단 패딩 ${(lastChild as FrameNode).paddingBottom}px도 함께 제거됩니다.)`;
+        if (offending.length > 0) {
+          const names = offending.map(f => `"${f.name}"(${f.paddingBottom}px)`).join(', ');
+          msg += ` (${names}의 하단 패딩도 함께 제거됩니다.)`;
         }
         issues.push({
           type: 'missing-bottom-padding',
@@ -1529,12 +1547,18 @@ async function fixMissingBottomPadding(nodeId: string): Promise<RevertOp[]> {
   if (!node || node.type !== 'FRAME') throw new Error('노드를 찾을 수 없어요.');
   const frame = node as FrameNode;
   const ops: RevertOp[] = [{ op: 'remove-layout', nodeId: frame.id, snap: snapshotFrame(frame) }];
-  // Body인 경우: 최하단 자식의 잔여 하단 패딩 제거 → Body 자체에 64 설정
+  // Body인 경우: last-child 체인의 모든 FRAME에서 잔여 하단 패딩 제거 → Body 자체에 64 설정
   if (frame.name === 'Body') {
-    const lastChild = frame.children[frame.children.length - 1];
-    if (lastChild && lastChild.type === 'FRAME' && (lastChild as FrameNode).paddingBottom > 0) {
-      ops.push({ op: 'remove-layout', nodeId: lastChild.id, snap: snapshotFrame(lastChild as FrameNode) });
-      (lastChild as FrameNode).paddingBottom = 0;
+    let cursor: FrameNode = frame;
+    while (true) {
+      const last = cursor.children[cursor.children.length - 1];
+      if (!last || last.type !== 'FRAME') break;
+      const lf = last as FrameNode;
+      if (lf.paddingBottom > 0) {
+        ops.push({ op: 'remove-layout', nodeId: lf.id, snap: snapshotFrame(lf) });
+        lf.paddingBottom = 0;
+      }
+      cursor = lf;
     }
   }
   frame.paddingBottom = 64;
@@ -2536,7 +2560,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T06:07:42.240Z | Total: 1 entries
+// Generated at: 2026-06-09T06:19:31.506Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",
