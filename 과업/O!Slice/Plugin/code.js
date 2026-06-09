@@ -1220,12 +1220,12 @@ async function detectEdgeCases(node, issues) {
                 nodeName: node.name,
             });
         }
-        // Instance 2개 이상인데 List wrapper 없음
+        // Instance 2개 이상인데 List wrapper 없음 (no-autolayout 등 다른 issue가 있어도 함께 안내)
         if (frame.parent && frame.parent.type !== 'PAGE') {
             const instances = children.filter(c => c.type === 'INSTANCE');
             const hasListChild = children.some(c => c.type === 'FRAME' && c.name === 'List');
             const isListOrRow = frame.name === 'List' || frame.name === 'Row';
-            if (instances.length >= 2 && !hasListChild && !isListOrRow && !issues.find(i => i.nodeId === frame.id)) {
+            if (instances.length >= 2 && !hasListChild && !isListOrRow) {
                 if (await isSameComponent(instances)) {
                     issues.push({
                         type: 'needs-list-wrapper',
@@ -1236,16 +1236,20 @@ async function detectEdgeCases(node, issues) {
                 }
             }
         }
-        // 이름 검사
-        if (frame.parent && frame.parent.type !== 'PAGE' && !issues.find(i => i.nodeId === frame.id)) {
-            const expectedName = await computeFrameName(frame);
-            if (expectedName !== null && expectedName !== frame.name) {
-                issues.push({
-                    type: 'wrong-area-name',
-                    message: `"${expectedName}"으로 이름을 변경해야 해요.`,
-                    nodeId: frame.id,
-                    nodeName: frame.name || '(이름 없음)',
-                });
+        // 이름 검사 — needs-list-wrapper가 같은 프레임에 있을 때만 suppress
+        // (그 경우 rename 대상이 'List'로 잘못 잡힐 수 있어서). 그 외(no-autolayout 등)와는 공존 OK.
+        if (frame.parent && frame.parent.type !== 'PAGE') {
+            const hasNeedsList = issues.some(i => i.nodeId === frame.id && i.type === 'needs-list-wrapper');
+            if (!hasNeedsList) {
+                const expectedName = await computeFrameName(frame);
+                if (expectedName !== null && expectedName !== frame.name) {
+                    issues.push({
+                        type: 'wrong-area-name',
+                        message: `"${expectedName}"으로 이름을 변경해야 해요.`,
+                        nodeId: frame.id,
+                        nodeName: frame.name || '(이름 없음)',
+                    });
+                }
             }
         }
         // 가로 Fill 검사 (부모가 Auto Layout인 경우)
@@ -2443,7 +2447,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T05:59:55.815Z | Total: 1 entries
+// Generated at: 2026-06-09T06:07:42.240Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",
