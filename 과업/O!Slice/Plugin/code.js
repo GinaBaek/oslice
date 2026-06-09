@@ -1135,9 +1135,8 @@ async function detectEdgeCases(node, issues) {
             const instanceChildren = children.filter(c => c.type === 'INSTANCE');
             const onlyInstances = instanceChildren.length >= 2 && instanceChildren.length === children.length;
             const isListLike = onlyInstances && await isSameComponent(instanceChildren);
-            const isSingleInstance = children.length === 1 && children[0].type === 'INSTANCE';
             if (isListLike) {
-                // 케이스 1: 같은 컴포넌트 2+개 → "List"로 rename + "[Comp] Area"로 감싸기 (삭제 X)
+                // 케이스 B: 같은 컴포넌트 2+개만 → "List"로 rename + "[Comp] Area"로 감싸기 (삭제 X)
                 const compName = await getCompName(instanceChildren[0]);
                 issues.push({
                     type: 'redundant-wrapper',
@@ -1146,24 +1145,29 @@ async function detectEdgeCases(node, issues) {
                     nodeName: frame.name || '(이름 없음)',
                 });
             }
-            else if (isSingleInstance) {
-                // 케이스 2: 단일 인스턴스 1개 → "[Comp] Area"로 rename만 (삭제 X)
-                const newName = await computeFrameName(frame);
-                const target = newName || ((await getCompName(children[0])) + ' Area');
-                issues.push({
-                    type: 'redundant-wrapper',
-                    message: `"${frame.name}"을 "${target}"로 이름을 바꿔야 해요.`,
-                    nodeId: frame.id,
-                    nodeName: frame.name || '(이름 없음)',
-                });
-            }
             else {
-                issues.push({
-                    type: 'redundant-wrapper',
-                    message: `"${frame.name}"은 불필요한 extra 프레임이에요. 상위 프레임으로 합쳐야 해요.`,
-                    nodeId: frame.id,
-                    nodeName: frame.name || '(이름 없음)',
-                });
+                // 케이스 A: computeFrameName이 적절한 이름(예: "Text Button Area")을 계산하면 rename만 (삭제 X)
+                //   - 단일 인스턴스 1개
+                //   - List 또는 List-like 프레임을 감싼 경우
+                //   - 기타 구조에서 Area 이름이 자명한 경우
+                const newName = await computeFrameName(frame);
+                if (newName && newName !== frame.name) {
+                    issues.push({
+                        type: 'redundant-wrapper',
+                        message: `"${frame.name}"을 "${newName}"로 이름을 바꿔야 해요.`,
+                        nodeId: frame.id,
+                        nodeName: frame.name || '(이름 없음)',
+                    });
+                }
+                else {
+                    // 케이스 C: 진짜 redundant → 기존대로 ungroup
+                    issues.push({
+                        type: 'redundant-wrapper',
+                        message: `"${frame.name}"은 불필요한 extra 프레임이에요. 상위 프레임으로 합쳐야 해요.`,
+                        nodeId: frame.id,
+                        nodeName: frame.name || '(이름 없음)',
+                    });
+                }
             }
             for (const child of children)
                 await detectEdgeCases(child, issues);
@@ -1404,14 +1408,6 @@ async function fixRedundantWrapper(nodeId) {
         throw new Error('부모를 찾을 수 없어요.');
     const parentFrame = frame.parent;
     const frameChildren = [...frame.children];
-    // 특수 케이스 A: 단일 인스턴스 1개만 → 프레임을 "[Comp] Area"로 rename만 (삭제 X)
-    if (frameChildren.length === 1 && frameChildren[0].type === 'INSTANCE') {
-        const oldName = frame.name;
-        const newName = await computeFrameName(frame);
-        const target = newName || ((await getCompName(frameChildren[0])) + ' Area');
-        frame.name = target;
-        return [{ op: 'rename', nodeId: frame.id, name: oldName }];
-    }
     // 특수 케이스 B: 같은 컴포넌트 2개 이상만 담긴 프레임 → "List"로 rename 후 "[Comp] Area"로 감싸기 (삭제 X)
     const instanceChildren = frameChildren.filter(c => c.type === 'INSTANCE');
     const onlyInstances = instanceChildren.length >= 2 && instanceChildren.length === frameChildren.length;
@@ -1436,7 +1432,15 @@ async function fixRedundantWrapper(nodeId) {
             { op: 'unwrap-list', parentId: parentFrame.id, listId: area.id },
         ];
     }
-    // 기본 케이스: ungroup (children을 부모로 올리고 frame remove)
+    // 특수 케이스 A: computeFrameName이 적절한 이름을 계산하면 rename만 (삭제 X)
+    //   - 단일 인스턴스, List를 감싼 wrapper, Area로 자명한 구조 등 다양한 케이스 커버
+    const computedName = await computeFrameName(frame);
+    if (computedName && computedName !== frame.name) {
+        const oldName = frame.name;
+        frame.name = computedName;
+        return [{ op: 'rename', nodeId: frame.id, name: oldName }];
+    }
+    // 케이스 C: ungroup (children을 부모로 올리고 frame remove)
     const frameIndex = [...parentFrame.children].indexOf(frame);
     const ops = [{
             op: 'rewrap-area',
@@ -2354,7 +2358,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T04:29:15.214Z | Total: 1 entries
+// Generated at: 2026-06-09T04:33:55.598Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",
