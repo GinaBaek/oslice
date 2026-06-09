@@ -605,12 +605,14 @@ async function applyAreaGrouping(frame: FrameNode): Promise<RevertOp[]> {
   }
 
   if (createdAreas.length > 0) {
-    createdAreas[0].paddingTop = bodyPaddingTop;
-    for (let i = 1; i < createdAreas.length; i++) createdAreas[i].paddingTop = 0;
-    createdAreas[createdAreas.length - 1].paddingBottom = 64;
-    for (let i = 0; i < createdAreas.length - 1; i++) createdAreas[i].paddingBottom = 0;
-    frame.paddingTop = 0;
-    frame.paddingBottom = 0;
+    // 모든 Area의 상·하단 패딩 0 (Body 자체가 외곽 패딩을 가짐)
+    for (let i = 0; i < createdAreas.length; i++) {
+      createdAreas[i].paddingTop = 0;
+      createdAreas[i].paddingBottom = 0;
+    }
+    // Body 자체에 외곽 패딩 부여 (상단은 기존값 유지, 하단은 64로 통일)
+    frame.paddingTop = bodyPaddingTop;
+    frame.paddingBottom = 64;
   }
 
   ops.unshift({ op: 'remove-layout', nodeId: frame.id, snap: bodySnap });
@@ -2480,7 +2482,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T05:37:24.900Z | Total: 1 entries
+// Generated at: 2026-06-09T05:41:45.934Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",
