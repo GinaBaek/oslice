@@ -1187,37 +1187,44 @@ async function detectEdgeCases(node: SceneNode, issues: Issue[]) {
       }
     }
 
-    // 최상단이 아닌 Area의 상단 패딩 불허 (모든 Area에 적용)
+    // 상단 패딩 불허: Body 직계 자식(이름 무관) 또는 일반 Area 프레임 (최상단 형제는 제외)
+    // → 위 프레임의 하단 패딩으로 이동
     if (
-      frame.name.endsWith('Area') &&
       frame.parent &&
       frame.parent.type === 'FRAME' &&
       frame.paddingTop > 0
     ) {
-      const siblings = [...(frame.parent as FrameNode).children];
-      const isFirst = siblings[0].id === frame.id;
-      if (!isFirst) {
-        issues.push({
-          type: 'excess-top-padding',
-          message: `최상단 Area가 아닌데 상단 패딩(${frame.paddingTop}px)이 있어요. 위 프레임의 하단 패딩으로 이동해야 해요.`,
-          nodeId: frame.id,
-          nodeName: frame.name,
-        });
+      const parentFrame = frame.parent as FrameNode;
+      const parentIsBody = parentFrame.name === 'Body';
+      const frameIsArea = frame.name.endsWith('Area');
+      if (parentIsBody || frameIsArea) {
+        const siblings = [...parentFrame.children];
+        const isFirst = siblings[0].id === frame.id;
+        if (!isFirst) {
+          issues.push({
+            type: 'excess-top-padding',
+            message: `상단 패딩(${frame.paddingTop}px)이 있어요. 위 프레임의 하단 패딩으로 이동해야 해요.`,
+            nodeId: frame.id,
+            nodeName: frame.name,
+          });
+        }
       }
     }
 
-    // Body 최하단 Area 하단 패딩 64 필수
-    if (
-      frame.parent &&
-      frame.parent.type === 'FRAME' &&
-      (frame.parent as FrameNode).name === 'Body'
-    ) {
-      const siblings = [...(frame.parent as FrameNode).children];
-      const isLast = siblings[siblings.length - 1].id === frame.id;
-      if (isLast && frame.paddingBottom !== 64) {
+    // Body 자체의 하단 패딩 64 필수 (+ 최하단 자식의 하단 패딩이 남아 있으면 함께 제거 대상으로 안내)
+    if (frame.name === 'Body') {
+      const bodyChildren = [...frame.children];
+      const lastChild = bodyChildren[bodyChildren.length - 1];
+      const lastChildHasBottom = !!(lastChild && lastChild.type === 'FRAME' && (lastChild as FrameNode).paddingBottom > 0);
+      const bodyBottomWrong = frame.paddingBottom !== 64;
+      if (bodyBottomWrong || lastChildHasBottom) {
+        let msg = `Body의 하단 패딩이 ${frame.paddingBottom}px예요. 64px로 설정해야 해요.`;
+        if (lastChildHasBottom) {
+          msg += ` (최하단 자식 "${(lastChild as FrameNode).name}"의 하단 패딩 ${(lastChild as FrameNode).paddingBottom}px도 함께 제거됩니다.)`;
+        }
         issues.push({
           type: 'missing-bottom-padding',
-          message: `Body 최하단 프레임의 하단 패딩이 ${frame.paddingBottom}px예요. 64px로 설정해야 해요.`,
+          message: msg,
           nodeId: frame.id,
           nodeName: frame.name,
         });
@@ -1466,6 +1473,14 @@ async function fixMissingBottomPadding(nodeId: string): Promise<RevertOp[]> {
   if (!node || node.type !== 'FRAME') throw new Error('노드를 찾을 수 없어요.');
   const frame = node as FrameNode;
   const ops: RevertOp[] = [{ op: 'remove-layout', nodeId: frame.id, snap: snapshotFrame(frame) }];
+  // Body인 경우: 최하단 자식의 잔여 하단 패딩 제거 → Body 자체에 64 설정
+  if (frame.name === 'Body') {
+    const lastChild = frame.children[frame.children.length - 1];
+    if (lastChild && lastChild.type === 'FRAME' && (lastChild as FrameNode).paddingBottom > 0) {
+      ops.push({ op: 'remove-layout', nodeId: lastChild.id, snap: snapshotFrame(lastChild as FrameNode) });
+      (lastChild as FrameNode).paddingBottom = 0;
+    }
+  }
   frame.paddingBottom = 64;
   return ops;
 }
@@ -2465,7 +2480,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T04:41:54.102Z | Total: 1 entries
+// Generated at: 2026-06-09T05:37:24.900Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",
