@@ -1327,6 +1327,25 @@ async function detectEdgeCases(node, issues) {
         return;
     }
 }
+async function computeNodeWrapperName(node) {
+    if (node.type === 'TEXT') {
+        const heading = await isHeadingText(node);
+        return heading ? 'Title Area' : 'Text Area';
+    }
+    if (node.type === 'INSTANCE') {
+        const inst = node;
+        if (isTextInstance(inst)) {
+            const heading = await isHeadingInstance(inst);
+            return heading ? 'Title Area' : 'Text Area';
+        }
+        const compName = await getCompName(inst);
+        return compName + ' Area';
+    }
+    if (['RECTANGLE', 'ELLIPSE', 'VECTOR', 'POLYGON', 'STAR', 'LINE', 'BOOLEAN_OPERATION'].indexOf(node.type) !== -1) {
+        return getShapeLabel(node) + ' Area';
+    }
+    return 'Area';
+}
 async function fixExcessTopPadding(nodeId) {
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node || node.type !== 'FRAME')
@@ -1334,19 +1353,39 @@ async function fixExcessTopPadding(nodeId) {
     const frame = node;
     if (!frame.parent || frame.parent.type !== 'FRAME')
         throw new Error('부모를 찾을 수 없어요.');
-    const siblings = [...frame.parent.children];
+    const parentFrame = frame.parent;
+    const siblings = [...parentFrame.children];
     const idx = siblings.findIndex(c => c.id === frame.id);
     if (idx <= 0)
         throw new Error('이전 프레임이 없어요.');
     const prev = siblings[idx - 1];
-    if (prev.type !== 'FRAME')
-        throw new Error('이전 노드가 프레임이 아니에요.');
-    const prevFrame = prev;
     const ops = [
         { op: 'remove-layout', nodeId: frame.id, snap: snapshotFrame(frame) },
-        { op: 'remove-layout', nodeId: prevFrame.id, snap: snapshotFrame(prevFrame) },
     ];
-    prevFrame.paddingBottom = prevFrame.paddingBottom + frame.paddingTop;
+    let targetFrame;
+    if (prev.type === 'FRAME') {
+        targetFrame = prev;
+        ops.push({ op: 'remove-layout', nodeId: targetFrame.id, snap: snapshotFrame(targetFrame) });
+    }
+    else {
+        // 이전 노드가 FRAME이 아니면 적절한 Area로 감싼 뒤 그 Area의 하단 패딩에 이동
+        const wrapperName = await computeNodeWrapperName(prev);
+        const prevIndex = idx - 1;
+        const area = figma.createFrame();
+        area.name = wrapperName;
+        area.fills = [];
+        area.clipsContent = false;
+        area.layoutMode = parentFrame.layoutMode !== 'NONE' ? parentFrame.layoutMode : 'VERTICAL';
+        area.primaryAxisSizingMode = 'AUTO';
+        area.counterAxisSizingMode = 'AUTO';
+        area.primaryAxisAlignItems = 'MIN';
+        area.counterAxisAlignItems = 'MIN';
+        parentFrame.insertChild(prevIndex, area);
+        area.appendChild(prev);
+        ops.push({ op: 'unwrap-list', parentId: parentFrame.id, listId: area.id });
+        targetFrame = area;
+    }
+    targetFrame.paddingBottom = targetFrame.paddingBottom + frame.paddingTop;
     frame.paddingTop = 0;
     return ops;
 }
@@ -2404,7 +2443,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T05:46:49.368Z | Total: 1 entries
+// Generated at: 2026-06-09T05:59:55.815Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",
