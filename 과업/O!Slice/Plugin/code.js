@@ -348,6 +348,34 @@ async function computeFrameName(frame) {
     }
     return await computeAreaName(frame);
 }
+// Area 프레임의 규칙 위반 수 카운트 — nested-area 발생 시 inner/outer 중 더 위반 많은 쪽 제거 판단용
+async function countAreaViolations(frame) {
+    let count = 0;
+    // 1. 이름이 computeFrameName 결과와 다름
+    const expected = await computeFrameName(frame);
+    if (expected !== null && expected !== frame.name)
+        count++;
+    // 2. 첫 형제가 아닌데 상단 패딩 존재
+    if (frame.parent && frame.parent.type === 'FRAME') {
+        const siblings = [...frame.parent.children];
+        const isFirst = siblings[0].id === frame.id;
+        if (!isFirst && frame.paddingTop > 0)
+            count++;
+    }
+    // 3. 하단 패딩 존재 (Body 외 어떤 Area도 0이어야 함)
+    if (frame.paddingBottom > 0)
+        count++;
+    // 4. Auto-layout 없음
+    if (frame.layoutMode === 'NONE')
+        count++;
+    // 5. 부모가 auto-layout인데 가로 Fill 아님
+    if (frame.parent && frame.parent.type === 'FRAME' && frame.parent.layoutMode !== 'NONE') {
+        const sizing = frame.layoutSizingHorizontal;
+        if (sizing !== undefined && sizing !== 'FILL')
+            count++;
+    }
+    return count;
+}
 function snapshotFrame(frame) {
     return {
         name: frame.name,
@@ -782,30 +810,49 @@ async function applyStructureFix(nodeId) {
         ops.push({ op: 'unwrap-list', parentId: parentFrame.id, listId: area.id });
         return ops;
     }
-    // 중첩 Area → inner Area(frame 자체) ungroup. outer Area는 보존(더 풍부한 이름을 가질 수 있어서).
+    // 중첩 Area → inner/outer 각각의 규칙 위반 수를 세서 더 많이 어긴 쪽 제거 (동률은 inner 제거)
     if (frame.name.endsWith('Area')) {
-        let hasAncestorArea = false;
+        let outerArea = null;
         let cursor = frame.parent;
         while (cursor && cursor.type !== 'PAGE') {
             if (cursor.type === 'FRAME' && cursor.name.endsWith('Area')) {
-                hasAncestorArea = true;
+                outerArea = cursor;
                 break;
             }
             cursor = cursor.parent;
         }
-        if (hasAncestorArea && frame.parent && frame.parent.type === 'FRAME') {
-            const parentFrame = frame.parent;
-            const frameIndex = [...parentFrame.children].indexOf(frame);
-            ops.push({ op: 'rewrap-area', parentId: parentFrame.id, insertIndex: frameIndex, snap: snapshotFrame(frame), parentPaddingSnap: { pt: parentFrame.paddingTop, pb: parentFrame.paddingBottom, pl: parentFrame.paddingLeft, pr: parentFrame.paddingRight } });
-            parentFrame.paddingTop += frame.paddingTop;
-            parentFrame.paddingBottom += frame.paddingBottom;
-            parentFrame.paddingLeft += frame.paddingLeft;
-            parentFrame.paddingRight += frame.paddingRight;
-            const kids = [...frame.children];
-            for (let i = kids.length - 1; i >= 0; i--)
-                parentFrame.insertChild(frameIndex, kids[i]);
-            frame.remove();
-            return ops;
+        if (outerArea && frame.parent && frame.parent.type === 'FRAME') {
+            const innerViolations = await countAreaViolations(frame);
+            const outerViolations = await countAreaViolations(outerArea);
+            const removeOuter = outerViolations > innerViolations;
+            if (removeOuter && outerArea.parent && outerArea.parent.type === 'FRAME') {
+                const gpFrame = outerArea.parent;
+                const outerIndex = [...gpFrame.children].indexOf(outerArea);
+                ops.push({ op: 'rewrap-area', parentId: gpFrame.id, insertIndex: outerIndex, snap: snapshotFrame(outerArea), parentPaddingSnap: { pt: gpFrame.paddingTop, pb: gpFrame.paddingBottom, pl: gpFrame.paddingLeft, pr: gpFrame.paddingRight } });
+                gpFrame.paddingTop += outerArea.paddingTop;
+                gpFrame.paddingBottom += outerArea.paddingBottom;
+                gpFrame.paddingLeft += outerArea.paddingLeft;
+                gpFrame.paddingRight += outerArea.paddingRight;
+                const kids = [...outerArea.children];
+                for (let i = kids.length - 1; i >= 0; i--)
+                    gpFrame.insertChild(outerIndex, kids[i]);
+                outerArea.remove();
+                return ops;
+            }
+            else {
+                const parentFrame = frame.parent;
+                const frameIndex = [...parentFrame.children].indexOf(frame);
+                ops.push({ op: 'rewrap-area', parentId: parentFrame.id, insertIndex: frameIndex, snap: snapshotFrame(frame), parentPaddingSnap: { pt: parentFrame.paddingTop, pb: parentFrame.paddingBottom, pl: parentFrame.paddingLeft, pr: parentFrame.paddingRight } });
+                parentFrame.paddingTop += frame.paddingTop;
+                parentFrame.paddingBottom += frame.paddingBottom;
+                parentFrame.paddingLeft += frame.paddingLeft;
+                parentFrame.paddingRight += frame.paddingRight;
+                const kids = [...frame.children];
+                for (let i = kids.length - 1; i >= 0; i--)
+                    parentFrame.insertChild(frameIndex, kids[i]);
+                frame.remove();
+                return ops;
+            }
         }
     }
     // Auto Layout 적용
@@ -2476,7 +2523,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T06:19:31.506Z | Total: 1 entries
+// Generated at: 2026-06-09T06:23:45.998Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",
