@@ -1132,12 +1132,27 @@ async function detectEdgeCases(node, issues) {
             isStructuralName(frame.parent.name) &&
             !isStructuralName(frame.name) &&
             children.length > 0) {
-            issues.push({
-                type: 'redundant-wrapper',
-                message: `"${frame.name}"은 불필요한 extra 프레임이에요. 상위 프레임으로 합쳐야 해요.`,
-                nodeId: frame.id,
-                nodeName: frame.name || '(이름 없음)',
-            });
+            // 특수 케이스: 같은 컴포넌트 2개 이상만 담겨 있으면 → List로 rename + Area로 감싸기 (삭제 X)
+            const instanceChildren = children.filter(c => c.type === 'INSTANCE');
+            const onlyInstances = instanceChildren.length >= 2 && instanceChildren.length === children.length;
+            const isListLike = onlyInstances && await isSameComponent(instanceChildren);
+            if (isListLike) {
+                const compName = await getCompName(instanceChildren[0]);
+                issues.push({
+                    type: 'redundant-wrapper',
+                    message: `"${frame.name}"은 "List"로 이름을 바꾸고, "${compName} Area"로 감싸야 해요.`,
+                    nodeId: frame.id,
+                    nodeName: frame.name || '(이름 없음)',
+                });
+            }
+            else {
+                issues.push({
+                    type: 'redundant-wrapper',
+                    message: `"${frame.name}"은 불필요한 extra 프레임이에요. 상위 프레임으로 합쳐야 해요.`,
+                    nodeId: frame.id,
+                    nodeName: frame.name || '(이름 없음)',
+                });
+            }
             for (const child of children)
                 await detectEdgeCases(child, issues);
             return;
@@ -1376,6 +1391,32 @@ async function fixRedundantWrapper(nodeId) {
     if (!frame.parent || frame.parent.type !== 'FRAME')
         throw new Error('부모를 찾을 수 없어요.');
     const parentFrame = frame.parent;
+    const frameChildren = [...frame.children];
+    // 특수 케이스: 같은 컴포넌트 2개 이상만 담긴 프레임 → "List"로 rename 후 "[Comp] Area"로 감싸기 (삭제 X)
+    const instanceChildren = frameChildren.filter(c => c.type === 'INSTANCE');
+    const onlyInstances = instanceChildren.length >= 2 && instanceChildren.length === frameChildren.length;
+    if (onlyInstances && await isSameComponent(instanceChildren)) {
+        const oldName = frame.name;
+        const compName = await getCompName(instanceChildren[0]);
+        const frameIndex = [...parentFrame.children].indexOf(frame);
+        const area = figma.createFrame();
+        area.name = compName + ' Area';
+        area.fills = [];
+        area.clipsContent = false;
+        area.layoutMode = parentFrame.layoutMode !== 'NONE' ? parentFrame.layoutMode : 'VERTICAL';
+        area.primaryAxisSizingMode = 'AUTO';
+        area.counterAxisSizingMode = 'AUTO';
+        area.primaryAxisAlignItems = 'MIN';
+        area.counterAxisAlignItems = 'MIN';
+        parentFrame.insertChild(frameIndex, area);
+        frame.name = 'List';
+        area.appendChild(frame);
+        return [
+            { op: 'rename', nodeId: frame.id, name: oldName },
+            { op: 'unwrap-list', parentId: parentFrame.id, listId: area.id },
+        ];
+    }
+    // 기본 케이스: ungroup (children을 부모로 올리고 frame remove)
     const frameIndex = [...parentFrame.children].indexOf(frame);
     const ops = [{
             op: 'rewrap-area',
@@ -1388,9 +1429,8 @@ async function fixRedundantWrapper(nodeId) {
     parentFrame.paddingBottom += frame.paddingBottom;
     parentFrame.paddingLeft += frame.paddingLeft;
     parentFrame.paddingRight += frame.paddingRight;
-    const kids = [...frame.children];
-    for (let i = kids.length - 1; i >= 0; i--)
-        parentFrame.insertChild(frameIndex, kids[i]);
+    for (let i = frameChildren.length - 1; i >= 0; i--)
+        parentFrame.insertChild(frameIndex, frameChildren[i]);
     frame.remove();
     return ops;
 }
@@ -2294,7 +2334,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-05-29T05:13:09.214Z | Total: 1 entries
+// Generated at: 2026-06-09T04:17:39.633Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",
