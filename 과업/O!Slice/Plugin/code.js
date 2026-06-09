@@ -255,14 +255,23 @@ async function computeAreaName(frame) {
                 parts.push(name);
         }
         else if (child.type === 'FRAME') {
-            // List / Row 구조 → 내부 모듈 이름으로 표현 (naming.md: Module Name Area 패턴)
             const cf = child;
             if (isListLikeFrame(cf)) {
+                // List / Row 구조 → 내부 모듈 이름으로 표현
                 const moduleInst = findFirstInstance(cf);
                 if (moduleInst) {
                     const name = await getCompName(moduleInst);
                     if (!parts.includes(name))
                         parts.push(name);
+                }
+            }
+            else {
+                // 일반 FRAME(예: Title Area, Text Area 같은 wrapper)도 내부 콘텐츠를 재귀로 추출해서 parts에 합침
+                const innerName = await computeAreaName(cf);
+                const innerParts = innerName.replace(/ Area$/, '').split(' + ');
+                for (const p of innerParts) {
+                    if (p && p !== cf.name && !parts.includes(p))
+                        parts.push(p);
                 }
             }
         }
@@ -2395,7 +2404,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T05:41:45.934Z | Total: 1 entries
+// Generated at: 2026-06-09T05:46:49.368Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",
