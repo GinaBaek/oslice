@@ -198,6 +198,26 @@ async function isSameComponent(instances: InstanceNode[]): Promise<boolean> {
   return true;
 }
 
+// FRAME에 콘텐츠가 있으면 ungroup(자식을 부모로 옮기고 wrapper만 제거), 그 외는 그냥 remove
+function removeOrUngroup(sceneNode: SceneNode): void {
+  if (
+    sceneNode.type === 'FRAME' &&
+    (sceneNode as FrameNode).children.length > 0 &&
+    sceneNode.parent && sceneNode.parent.type === 'FRAME'
+  ) {
+    const frame = sceneNode as FrameNode;
+    const parent = sceneNode.parent as FrameNode;
+    // 이전 단계에서 visible=false로 숨겨졌을 수 있음 → 자식들이 invisible 상태로 옮겨가지 않게 복원
+    if (!frame.visible) frame.visible = true;
+    const frameIndex = [...parent.children].indexOf(frame as any);
+    const kids = [...frame.children];
+    for (let i = kids.length - 1; i >= 0; i--) parent.insertChild(frameIndex, kids[i]);
+    frame.remove();
+  } else {
+    sceneNode.remove();
+  }
+}
+
 function isStructuralName(name: string): boolean {
   return name === 'Body' || name === 'List' || name === 'Row' ||
     name === 'Header' || name === 'Footer' ||
@@ -1729,8 +1749,8 @@ figma.ui.onmessage = async (msg: { type: string; nodeId?: string; issueType?: st
       if (node) {
         const sceneNode = node as SceneNode;
         if (!sceneNode.visible) {
-          // 이미 숨겨진 노드(hidden-layer)는 바로 제거
-          sceneNode.remove();
+          // 이미 숨겨진 노드(hidden-layer)는 바로 제거 (FRAME에 콘텐츠 있으면 ungroup)
+          removeOrUngroup(sceneNode);
           figma.ui.postMessage({ type: 'delete-done', nodeId: msg.nodeId, revertOps: [] });
         } else {
           pluginSelecting = true;
@@ -1751,7 +1771,7 @@ figma.ui.onmessage = async (msg: { type: string; nodeId?: string; issueType?: st
     try {
       pluginSelecting = true;
       const node = await figma.getNodeByIdAsync(msg.nodeId);
-      if (node) (node as SceneNode).remove();
+      if (node) removeOrUngroup(node as SceneNode);
       pluginSelecting = false;
     } catch (_) {
       pluginSelecting = false;
@@ -2445,7 +2465,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T04:33:55.598Z | Total: 1 entries
+// Generated at: 2026-06-09T04:41:54.102Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",

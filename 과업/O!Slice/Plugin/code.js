@@ -198,6 +198,26 @@ async function isSameComponent(instances) {
     }
     return true;
 }
+// FRAME에 콘텐츠가 있으면 ungroup(자식을 부모로 옮기고 wrapper만 제거), 그 외는 그냥 remove
+function removeOrUngroup(sceneNode) {
+    if (sceneNode.type === 'FRAME' &&
+        sceneNode.children.length > 0 &&
+        sceneNode.parent && sceneNode.parent.type === 'FRAME') {
+        const frame = sceneNode;
+        const parent = sceneNode.parent;
+        // 이전 단계에서 visible=false로 숨겨졌을 수 있음 → 자식들이 invisible 상태로 옮겨가지 않게 복원
+        if (!frame.visible)
+            frame.visible = true;
+        const frameIndex = [...parent.children].indexOf(frame);
+        const kids = [...frame.children];
+        for (let i = kids.length - 1; i >= 0; i--)
+            parent.insertChild(frameIndex, kids[i]);
+        frame.remove();
+    }
+    else {
+        sceneNode.remove();
+    }
+}
 function isStructuralName(name) {
     return name === 'Body' || name === 'List' || name === 'Row' ||
         name === 'Header' || name === 'Footer' ||
@@ -1642,8 +1662,8 @@ figma.ui.onmessage = async (msg) => {
             if (node) {
                 const sceneNode = node;
                 if (!sceneNode.visible) {
-                    // 이미 숨겨진 노드(hidden-layer)는 바로 제거
-                    sceneNode.remove();
+                    // 이미 숨겨진 노드(hidden-layer)는 바로 제거 (FRAME에 콘텐츠 있으면 ungroup)
+                    removeOrUngroup(sceneNode);
                     figma.ui.postMessage({ type: 'delete-done', nodeId: msg.nodeId, revertOps: [] });
                 }
                 else {
@@ -1666,7 +1686,7 @@ figma.ui.onmessage = async (msg) => {
             pluginSelecting = true;
             const node = await figma.getNodeByIdAsync(msg.nodeId);
             if (node)
-                node.remove();
+                removeOrUngroup(node);
             pluginSelecting = false;
         }
         catch (_) {
@@ -2358,7 +2378,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T04:33:55.598Z | Total: 1 entries
+// Generated at: 2026-06-09T04:41:54.102Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",
