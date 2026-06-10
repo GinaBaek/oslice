@@ -585,10 +585,25 @@ async function applyAreaGrouping(frame: FrameNode): Promise<RevertOp[]> {
     compNameMap.set(inst.id, await getCompName(inst));
   }
 
-  // absolute 인스턴스 처리: 각자 Area로 감싸고 같은 위치값 유지
-  for (const inst of absoluteInstances) {
-    const absX = inst.x;
-    const absY = inst.y;
+  // absolute 인스턴스 처리: 각자 Area로 감쌈 (지나님 예시 패턴)
+  //   - Area는 Canvas 너비에 맞춰서 가로로 펴고 x=0, y=인스턴스 원래 y
+  //   - 원래 인스턴스 x → Area paddingLeft로 보존 (가로 자리 유지)
+  //   - 원래 우측 gap → Area paddingRight
+  //   - 다음 absolute 형제(또는 Canvas 하단)까지의 gap → Area paddingBottom (시각적 breathing space 보존)
+  const absInfo = absoluteInstances.map(inst => ({
+    inst,
+    x: inst.x,
+    y: inst.y,
+    w: inst.width,
+    h: inst.height,
+  }));
+  absInfo.sort((a, b) => a.y - b.y);
+
+  for (let idx = 0; idx < absInfo.length; idx++) {
+    const { inst, x: instX, y: instY, w: instW, h: instH } = absInfo[idx];
+    const bottomGap = idx + 1 < absInfo.length
+      ? Math.max(0, absInfo[idx + 1].y - (instY + instH))
+      : Math.max(0, frame.height - (instY + instH));
     const compName = compNameMap.get(inst.id) || 'Component';
     const area = figma.createFrame();
     area.name = compName + ' Area';
@@ -596,14 +611,21 @@ async function applyAreaGrouping(frame: FrameNode): Promise<RevertOp[]> {
     area.clipsContent = false;
     area.layoutMode = 'VERTICAL';
     area.primaryAxisSizingMode = 'AUTO';
-    area.counterAxisSizingMode = 'AUTO';
+    area.counterAxisSizingMode = 'FIXED';
     area.primaryAxisAlignItems = 'MIN';
     area.counterAxisAlignItems = 'MIN';
+    area.paddingTop = 0;
+    area.paddingBottom = bottomGap;
+    area.paddingLeft = Math.max(0, instX);
+    area.paddingRight = Math.max(0, frame.width - instX - instW);
+    area.resize(frame.width, Math.max(1, instH + bottomGap));
     frame.appendChild(area);
+    if (frame.layoutMode !== 'NONE') {
+      (area as any).layoutPositioning = 'ABSOLUTE';
+    }
+    area.x = 0;
+    area.y = instY;
     area.appendChild(inst);
-    (area as any).layoutPositioning = 'ABSOLUTE';
-    area.x = absX;
-    area.y = absY;
     ops.push({ op: 'unwrap-list', parentId: frame.id, listId: area.id });
   }
 
@@ -2687,7 +2709,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-10T07:28:59.013Z | Total: 1 entries
+// Generated at: 2026-06-10T07:42:02.324Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",
