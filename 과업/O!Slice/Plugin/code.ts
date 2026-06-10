@@ -52,7 +52,7 @@ function isScreen(frame: FrameNode): boolean {
   if (!frame.parent || (frame.parent as any).type !== 'PAGE') return false;
   return [...frame.children].some(c => {
     const n = c.name.toLowerCase();
-    return n.includes('status bar') || n.includes('statusbar') || n === 'header' || n === 'body';
+    return n.includes('status bar') || n.includes('statusbar') || n === 'header' || n === 'body' || n === 'canvas';
   });
 }
 
@@ -1265,6 +1265,23 @@ async function detectEdgeCases(node: SceneNode, issues: Issue[]) {
       nodeName: node.name || '(이름 없음)',
     });
     return;
+  }
+
+  // INSTANCE에 SLOT(콘텐츠 삽입 영역)이 있으면 그 안의 사용자 콘텐츠는 일반 frame처럼 검증
+  // (overlay/modal 컴포넌트의 slot 안에 Body > Areas 구조가 들어가는 패턴 지원)
+  // 기존 INSTANCE 자체 검증 로직은 아래에서 그대로 실행되도록 early return하지 않음
+  if (node.type === 'INSTANCE') {
+    const instance = node as InstanceNode;
+    for (const child of instance.children) {
+      if ((child.type as string) === 'SLOT') {
+        const slotChildren = (child as any).children as SceneNode[] | undefined;
+        if (slotChildren && slotChildren.length > 0) {
+          for (const slotContent of slotChildren) {
+            await detectEdgeCases(slotContent, issues);
+          }
+        }
+      }
+    }
   }
 
   if (node.name.toLowerCase().includes('ignore to autolayout')) return;
@@ -2709,7 +2726,7 @@ interface ComponentTemplate {
 
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-10T07:42:02.324Z | Total: 1 entries
+// Generated at: 2026-06-10T08:18:01.211Z | Total: 1 entries
 const COMPONENT_REGISTRY: ComponentTemplate[] = [
   {
     componentId: "75:411",
