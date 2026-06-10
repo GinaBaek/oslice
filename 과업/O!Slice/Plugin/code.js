@@ -219,7 +219,7 @@ function removeOrUngroup(sceneNode) {
     }
 }
 function isStructuralName(name) {
-    return name === 'Body' || name === 'List' || name === 'Row' ||
+    return name === 'Body' || name === 'Canvas' || name === 'List' || name === 'Row' ||
         name === 'Header' || name === 'Footer' ||
         name === 'Status Bar' || name === 'Top Bar' || name === 'CTA Bar' ||
         name.endsWith('Area');
@@ -301,7 +301,7 @@ async function computeAreaName(frame) {
 async function computeFrameName(frame) {
     if (!frame.parent || frame.parent.type === 'PAGE')
         return null;
-    if (['Body', 'Status Bar', 'Top Bar', 'CTA Bar', 'List', 'Row'].includes(frame.name))
+    if (['Body', 'Canvas', 'Status Bar', 'Top Bar', 'CTA Bar', 'List', 'Row'].includes(frame.name))
         return null;
     const children = [...frame.children];
     if (children.length === 0)
@@ -549,17 +549,51 @@ function makeListFrame(direction) {
 }
 async function applyAreaGrouping(frame) {
     const ops = [];
-    const instances = [...frame.children].filter(c => c.type === 'INSTANCE');
-    if (instances.length === 0)
+    const allInstances = [...frame.children].filter(c => c.type === 'INSTANCE');
+    if (allInstances.length === 0)
         return ops;
+    // 절대 위치 자식 vs 흐름 자식 분리: absolute는 각자 Area로 감싸 위치값 보존
+    const absoluteInstances = [];
+    const instances = [];
+    for (const inst of allInstances) {
+        if (inst.layoutPositioning === 'ABSOLUTE')
+            absoluteInstances.push(inst);
+        else
+            instances.push(inst);
+    }
     const bodySnap = snapshotFrame(frame);
     const bodyPaddingTop = frame.paddingTop;
-    if (frame.layoutMode === 'NONE')
+    if (frame.layoutMode === 'NONE' && instances.length > 0)
         applyAutoLayout(frame);
-    // 모든 인스턴스의 컴포넌트 이름 미리 계산
+    // 모든 인스턴스의 컴포넌트 이름 미리 계산 (absolute 포함)
     const compNameMap = new Map();
-    for (const inst of instances) {
+    for (const inst of allInstances) {
         compNameMap.set(inst.id, await getCompName(inst));
+    }
+    // absolute 인스턴스 처리: 각자 Area로 감싸고 같은 위치값 유지
+    for (const inst of absoluteInstances) {
+        const absX = inst.x;
+        const absY = inst.y;
+        const compName = compNameMap.get(inst.id) || 'Component';
+        const area = figma.createFrame();
+        area.name = compName + ' Area';
+        area.fills = [];
+        area.clipsContent = false;
+        area.layoutMode = 'VERTICAL';
+        area.primaryAxisSizingMode = 'AUTO';
+        area.counterAxisSizingMode = 'AUTO';
+        area.primaryAxisAlignItems = 'MIN';
+        area.counterAxisAlignItems = 'MIN';
+        frame.appendChild(area);
+        area.appendChild(inst);
+        area.layoutPositioning = 'ABSOLUTE';
+        area.x = absX;
+        area.y = absY;
+        ops.push({ op: 'unwrap-list', parentId: frame.id, listId: area.id });
+    }
+    if (instances.length === 0) {
+        ops.unshift({ op: 'remove-layout', nodeId: frame.id, snap: bodySnap });
+        return ops;
     }
     const slices = groupByHorizontalSlice(instances);
     // 슬라이스의 컴포넌트 조합 시그니처 (정렬된 고유 이름)
@@ -656,14 +690,15 @@ async function applyAreaGrouping(frame) {
         }
     }
     if (createdAreas.length > 0) {
-        // 모든 Area의 상·하단 패딩 0 (Body 자체가 외곽 패딩을 가짐)
+        // 모든 Area의 상·하단 패딩 0 (Body/Canvas 자체가 외곽 패딩을 가짐)
         for (let i = 0; i < createdAreas.length; i++) {
             createdAreas[i].paddingTop = 0;
             createdAreas[i].paddingBottom = 0;
         }
-        // Body 자체에 외곽 패딩 부여 (상단은 기존값 유지, 하단은 64로 통일)
+        // Body는 하단 패딩 64 강제. Canvas는 외곽 패딩 유지하지 않음 (캔버스 자유 위치).
         frame.paddingTop = bodyPaddingTop;
-        frame.paddingBottom = 64;
+        if (frame.name === 'Body')
+            frame.paddingBottom = 64;
     }
     ops.unshift({ op: 'remove-layout', nodeId: frame.id, snap: bodySnap });
     return ops;
@@ -1199,22 +1234,27 @@ async function detectEdgeCases(node, issues) {
                 return;
             }
         }
-        // Body에 Area 없이 직접 인스턴스 → Area 그루핑 필요
-        if (frame.name === 'Body') {
+        // Body / Canvas에 Area 없이 직접 인스턴스 → Area 그루핑 필요 (Canvas도 Body와 동일 구조 규칙)
+        if (frame.name === 'Body' || frame.name === 'Canvas') {
             // 양옆 패딩 0 필수
             if (frame.paddingLeft > 0 || frame.paddingRight > 0) {
                 issues.push({
                     type: 'body-side-padding',
-                    message: `Body의 양옆 패딩(left: ${frame.paddingLeft}px, right: ${frame.paddingRight}px)이 있어요. 0으로 설정해야 해요.`,
+                    message: `${frame.name}의 양옆 패딩(left: ${frame.paddingLeft}px, right: ${frame.paddingRight}px)이 있어요. 0으로 설정해야 해요.`,
                     nodeId: frame.id,
                     nodeName: frame.name,
                 });
             }
             const directInstances = children.filter(c => c.type === 'INSTANCE');
             if (directInstances.length > 0) {
+                const absCount = directInstances.filter(c => c.layoutPositioning === 'ABSOLUTE').length;
+                const flowCount = directInstances.length - absCount;
+                const where = absCount > 0
+                    ? `(flow ${flowCount}개, absolute ${absCount}개)`
+                    : `${directInstances.length}개`;
                 issues.push({
                     type: 'needs-area-grouping',
-                    message: `Body 안에 Area 없이 컴포넌트 ${directInstances.length}개가 직접 배치되어 있어요. 가로 슬라이스 기준으로 Area를 생성해야 해요.`,
+                    message: `${frame.name} 안에 Area 없이 컴포넌트 ${where}가 직접 배치되어 있어요. ${absCount > 0 ? 'absolute 컴포넌트는 각자 Area로 감싸 위치값 보존, flow는 가로 슬라이스 기준으로 그룹핑됩니다.' : '가로 슬라이스 기준으로 Area를 생성해야 해요.'}`,
                     nodeId: frame.id,
                     nodeName: frame.name,
                 });
@@ -2566,7 +2606,7 @@ function escapeHtmlChars(s) {
 }
 // <REGISTRY:BEGIN> — DO NOT EDIT. scripts/build-registry.js가 자동 생성합니다.
 // 컴포넌트 추가/수정은 [SpaceAI] 디자인 컴포넌트 md/ 폴더의 MD 파일을 편집하세요.
-// Generated at: 2026-06-09T06:48:19.666Z | Total: 1 entries
+// Generated at: 2026-06-10T07:28:59.013Z | Total: 1 entries
 const COMPONENT_REGISTRY = [
     {
         componentId: "75:411",
